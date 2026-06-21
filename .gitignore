@@ -1,0 +1,17 @@
+# VS Code configuration
+.vscode/
+
+# Compiled files and executables
+hello
+hello.exe
+*.exe
+*.obj
+*.lib
+*.exp
+*.pdb
+
+# Build output directories
+build/
+x64/
+Debug/
+Release/

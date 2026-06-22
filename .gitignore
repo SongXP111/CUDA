@@ -1,5 +1,9 @@
-# VS Code configuration
+# VS Code / IDE configuration
 .vscode/
+
+# clangd configuration (local, machine-specific)
+.clangd
+compile_flags.txt
 
 # Compiled files and executables
 hello

@@ -22,20 +22,20 @@
 具体计算公式如下（参考代码实现：[01_idxing.cu](file:///c:/Users/16472/OneDrive/Desktop/Documents/GitHub/CUDA/05_Writing_your_First_Kernels/01%20CUDA%20Basics/01_idxing.cu)）：
 
 1. **计算当前 Block 在 Grid 中的唯一 ID (`block_id`)**：
-   $$block\_id = blockIdx.x + blockIdx.y \times gridDim.x + blockIdx.z \times gridDim.x \times gridDim.y$$
+   `block_id = blockIdx.x + blockIdx.y * gridDim.x + blockIdx.z * gridDim.x * gridDim.y`
    * `blockIdx.x` 是当前 Block 在 X 维度的索引。
    * `blockIdx.y * gridDim.x` 累加了前面完整行（Y 维度）包含的 Block 数。
    * `blockIdx.z * gridDim.x * gridDim.y` 累加了前面完整切片（Z 维度）包含的 Block 数。
 
 2. **计算当前 Block 的全局线程偏移量 (`block_offset`)**：
-   $$block\_offset = block\_id \times (blockDim.x \times blockDim.y \times blockDim.z)$$
+   `block_offset = block_id * (blockDim.x * blockDim.y * blockDim.z)`
    * 即：之前所有 Block 包含的线程总数。
 
 3. **计算当前线程在当前 Block 内部的相对偏移量 (`thread_offset`)**：
-   $$thread\_offset = threadIdx.x + threadIdx.y \times blockDim.x + threadIdx.z \times blockDim.x \times blockDim.y$$
+   `thread_offset = threadIdx.x + threadIdx.y * blockDim.x + threadIdx.z * blockDim.x * blockDim.y`
 
 4. **计算全局唯一线程 ID (`id`)**：
-   $$id = block\_offset + thread\_offset$$
+   `id = block_offset + thread_offset`
 
 **示例代码：**
 ```cpp

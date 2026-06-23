@@ -6,6 +6,9 @@
 #include <iostream>
 #include <chrono>
 
+using std::chrono::steady_clock;
+using std::chrono::duration;
+
 #define CUDA_CHECK(val) check((val), #val, __FILE__, __LINE__)
 inline void check(cudaError_t err, const char* const func, const char* const file, const int line) {
     if (err != cudaSuccess) {
@@ -63,8 +66,8 @@ void init_vector(float *vec, int n) {
 
 // Function to measure execution time (cross-platform using std::chrono)
 double get_time() {
-    auto now = std::chrono::steady_clock::now();
-    return std::chrono::duration<double>(now.time_since_epoch()).count();
+    auto now = steady_clock::now();
+    return duration<double>(now.time_since_epoch()).count();
 }
 int main() {
     float *h_a, *h_b, *h_c_cpu, *h_c_gpu_1d, *h_c_gpu_3d;

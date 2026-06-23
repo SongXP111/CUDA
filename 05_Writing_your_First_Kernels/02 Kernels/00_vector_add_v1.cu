@@ -5,6 +5,9 @@
 #include <cuda_runtime.h>
 #include <chrono>
 
+using std::chrono::steady_clock;
+using std::chrono::duration;
+
 #define N 10000000  // Vector size = 10 million
 #define BLOCK_SIZE 256
 
@@ -45,8 +48,8 @@ void init_vector(float *vec, int n) {
 
 // Function to measure execution time (cross-platform using std::chrono)
 double get_time() {
-    auto now = std::chrono::steady_clock::now();
-    return std::chrono::duration<double>(now.time_since_epoch()).count();
+    auto now = steady_clock::now();
+    return duration<double>(now.time_since_epoch()).count();
 }
 
 int main() {

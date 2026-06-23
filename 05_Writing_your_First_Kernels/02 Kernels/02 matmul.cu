@@ -5,6 +5,9 @@
 #include <chrono>
 #include <math.h>
 
+using std::chrono::steady_clock;
+using std::chrono::duration;
+
 #define CUDA_CHECK(val) check((val), #val, __FILE__, __LINE__)
 inline void check(cudaError_t err, const char* const func, const char* const file, const int line) {
     if (err != cudaSuccess) {
@@ -71,8 +74,8 @@ void init_matrix(float *mat, int rows, int cols) {
 
 // Function to measure execution time (cross-platform using std::chrono)
 double get_time() {
-    auto now = std::chrono::steady_clock::now();
-    return std::chrono::duration<double>(now.time_since_epoch()).count();
+    auto now = steady_clock::now();
+    return duration<double>(now.time_since_epoch()).count();
 }
 
 int main() {

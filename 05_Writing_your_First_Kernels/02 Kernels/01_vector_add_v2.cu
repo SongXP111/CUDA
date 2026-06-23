@@ -4,6 +4,15 @@
 #include <cuda_runtime.h>
 #include <math.h>
 #include <iostream>
+#include <chrono>
+
+#define CUDA_CHECK(val) check((val), #val, __FILE__, __LINE__)
+inline void check(cudaError_t err, const char* const func, const char* const file, const int line) {
+    if (err != cudaSuccess) {
+        fprintf(stderr, "CUDA error at %s:%d code=%d(%s) \"%s\" \n", file, line, err, cudaGetErrorString(err), func);
+        exit(EXIT_FAILURE);
+    }
+}
 
 #define N 10000000  // Vector size = 10 million
 #define BLOCK_SIZE_1D 1024
@@ -52,11 +61,10 @@ void init_vector(float *vec, int n) {
     }
 }
 
-// Function to measure execution time
+// Function to measure execution time (cross-platform using std::chrono)
 double get_time() {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_sec + ts.tv_nsec * 1e-9;
+    auto now = std::chrono::steady_clock::now();
+    return std::chrono::duration<double>(now.time_since_epoch()).count();
 }
 int main() {
     float *h_a, *h_b, *h_c_cpu, *h_c_gpu_1d, *h_c_gpu_3d;
@@ -76,14 +84,14 @@ int main() {
     init_vector(h_b, N);
 
     // Allocate device memory
-    cudaMalloc(&d_a, size);
-    cudaMalloc(&d_b, size);
-    cudaMalloc(&d_c_1d, size);
-    cudaMalloc(&d_c_3d, size);
+    CUDA_CHECK(cudaMalloc(&d_a, size));
+    CUDA_CHECK(cudaMalloc(&d_b, size));
+    CUDA_CHECK(cudaMalloc(&d_c_1d, size));
+    CUDA_CHECK(cudaMalloc(&d_c_3d, size));
 
     // Copy data to device
-    cudaMemcpy(d_a, h_a, size, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_b, h_b, size, cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(d_a, h_a, size, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_b, h_b, size, cudaMemcpyHostToDevice));
 
     // Define grid and block dimensions for 1D
     int num_blocks_1d = (N + BLOCK_SIZE_1D - 1) / BLOCK_SIZE_1D;
@@ -103,7 +111,8 @@ int main() {
         vector_add_cpu(h_a, h_b, h_c_cpu, N);
         vector_add_gpu_1d<<<num_blocks_1d, BLOCK_SIZE_1D>>>(d_a, d_b, d_c_1d, N);
         vector_add_gpu_3d<<<num_blocks_3d, block_size_3d>>>(d_a, d_b, d_c_3d, nx, ny, nz);
-        cudaDeviceSynchronize();
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaDeviceSynchronize());
     }
 
     // Benchmark CPU implementation
@@ -124,14 +133,15 @@ int main() {
         cudaMemset(d_c_1d, 0, size);  // Clear previous results
         double start_time = get_time();
         vector_add_gpu_1d<<<num_blocks_1d, BLOCK_SIZE_1D>>>(d_a, d_b, d_c_1d, N);
-        cudaDeviceSynchronize();
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaDeviceSynchronize());
         double end_time = get_time();
         gpu_1d_total_time += end_time - start_time;
     }
     double gpu_1d_avg_time = gpu_1d_total_time / 100.0;
 
     // Verify 1D results immediately
-    cudaMemcpy(h_c_gpu_1d, d_c_1d, size, cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpy(h_c_gpu_1d, d_c_1d, size, cudaMemcpyDeviceToHost));
     bool correct_1d = true;
     for (int i = 0; i < N; i++) {
         if (fabs(h_c_cpu[i] - h_c_gpu_1d[i]) > 1e-4) {
@@ -149,14 +159,15 @@ int main() {
         cudaMemset(d_c_3d, 0, size);  // Clear previous results
         double start_time = get_time();
         vector_add_gpu_3d<<<num_blocks_3d, block_size_3d>>>(d_a, d_b, d_c_3d, nx, ny, nz);
-        cudaDeviceSynchronize();
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaDeviceSynchronize());
         double end_time = get_time();
         gpu_3d_total_time += end_time - start_time;
     }
     double gpu_3d_avg_time = gpu_3d_total_time / 100.0;
 
     // Verify 3D results immediately
-    cudaMemcpy(h_c_gpu_3d, d_c_3d, size, cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpy(h_c_gpu_3d, d_c_3d, size, cudaMemcpyDeviceToHost));
     bool correct_3d = true;
     for (int i = 0; i < N; i++) {
         if (fabs(h_c_cpu[i] - h_c_gpu_3d[i]) > 1e-4) {

@@ -2,6 +2,16 @@
 #include <stdlib.h>
 #include <time.h>
 #include <cuda_runtime.h>
+#include <chrono>
+#include <math.h>
+
+#define CUDA_CHECK(val) check((val), #val, __FILE__, __LINE__)
+inline void check(cudaError_t err, const char* const func, const char* const file, const int line) {
+    if (err != cudaSuccess) {
+        fprintf(stderr, "CUDA error at %s:%d code=%d(%s) \"%s\" \n", file, line, err, cudaGetErrorString(err), func);
+        exit(EXIT_FAILURE);
+    }
+}
 
 #define M 256  // Number of rows in A and C
 #define K 512   // Number of columns in A and rows in B
@@ -59,11 +69,10 @@ void init_matrix(float *mat, int rows, int cols) {
     }
 }
 
-// Function to measure execution time
+// Function to measure execution time (cross-platform using std::chrono)
 double get_time() {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_sec + ts.tv_nsec * 1e-9;
+    auto now = std::chrono::steady_clock::now();
+    return std::chrono::duration<double>(now.time_since_epoch()).count();
 }
 
 int main() {
@@ -85,13 +94,13 @@ int main() {
     init_matrix(h_B, K, N);
 
     // Allocate device memory
-    cudaMalloc(&d_A, size_A);
-    cudaMalloc(&d_B, size_B);
-    cudaMalloc(&d_C, size_C);
+    CUDA_CHECK(cudaMalloc(&d_A, size_A));
+    CUDA_CHECK(cudaMalloc(&d_B, size_B));
+    CUDA_CHECK(cudaMalloc(&d_C, size_C));
 
     // Copy data to device
-    cudaMemcpy(d_A, h_A, size_A, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_B, h_B, size_B, cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(d_A, h_A, size_A, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_B, h_B, size_B, cudaMemcpyHostToDevice));
 
     // Define grid and block dimensions
     dim3 blockDim(BLOCK_SIZE, BLOCK_SIZE);
@@ -102,7 +111,8 @@ int main() {
     for (int i = 0; i < 3; i++) {
         matmul_cpu(h_A, h_B, h_C_cpu, M, K, N);
         matmul_gpu<<<gridDim, blockDim>>>(d_A, d_B, d_C, M, K, N);
-        cudaDeviceSynchronize();
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaDeviceSynchronize());
     }
 
     // Benchmark CPU implementation
@@ -122,7 +132,8 @@ int main() {
     for (int i = 0; i < 20; i++) {
         double start_time = get_time();
         matmul_gpu<<<gridDim, blockDim>>>(d_A, d_B, d_C, M, K, N);
-        cudaDeviceSynchronize();
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaDeviceSynchronize());
         double end_time = get_time();
         gpu_total_time += end_time - start_time;
     }
@@ -132,6 +143,18 @@ int main() {
     printf("CPU average time: %f microseconds\n", (cpu_avg_time * 1e6f));
     printf("GPU average time: %f microseconds\n", (gpu_avg_time * 1e6f));
     printf("Speedup: %fx\n", cpu_avg_time / gpu_avg_time);
+
+    // Verify results
+    CUDA_CHECK(cudaMemcpy(h_C_gpu, d_C, size_C, cudaMemcpyDeviceToHost));
+    bool correct = true;
+    for (int i = 0; i < M * N; i++) {
+        if (fabs(h_C_cpu[i] - h_C_gpu[i]) > 1e-4) {
+            correct = false;
+            printf("Mismatch at index %d: cpu=%f, gpu=%f\n", i, h_C_cpu[i], h_C_gpu[i]);
+            break;
+        }
+    }
+    printf("Results are %s\n", correct ? "correct" : "incorrect");
 
     // Free memory
     free(h_A);

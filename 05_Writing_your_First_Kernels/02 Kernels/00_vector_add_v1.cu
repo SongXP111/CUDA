@@ -1,10 +1,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <math.h>
 #include <cuda_runtime.h>
+#include <chrono>
 
 #define N 10000000  // Vector size = 10 million
 #define BLOCK_SIZE 256
+
+#define CUDA_CHECK(val) check((val), #val, __FILE__, __LINE__)
+inline void check(cudaError_t err, const char* const func, const char* const file, const int line) {
+    if (err != cudaSuccess) {
+        fprintf(stderr, "CUDA error at %s:%d code=%d(%s) \"%s\" \n", file, line, err, cudaGetErrorString(err), func);
+        exit(EXIT_FAILURE);
+    }
+}
 
 // Example:
 // A = [1, 2, 3, 4, 5]
@@ -33,11 +43,10 @@ void init_vector(float *vec, int n) {
     }
 }
 
-// Function to measure execution time
+// Function to measure execution time (cross-platform using std::chrono)
 double get_time() {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_sec + ts.tv_nsec * 1e-9;
+    auto now = std::chrono::steady_clock::now();
+    return std::chrono::duration<double>(now.time_since_epoch()).count();
 }
 
 int main() {
@@ -57,13 +66,13 @@ int main() {
     init_vector(h_b, N);
 
     // Allocate device memory
-    cudaMalloc(&d_a, size);
-    cudaMalloc(&d_b, size);
-    cudaMalloc(&d_c, size);
+    CUDA_CHECK(cudaMalloc(&d_a, size));
+    CUDA_CHECK(cudaMalloc(&d_b, size));
+    CUDA_CHECK(cudaMalloc(&d_c, size));
 
     // Copy data to device
-    cudaMemcpy(d_a, h_a, size, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_b, h_b, size, cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(d_a, h_a, size, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_b, h_b, size, cudaMemcpyHostToDevice));
 
     // Define grid and block dimensions
     int num_blocks = (N + BLOCK_SIZE - 1) / BLOCK_SIZE;
@@ -75,7 +84,8 @@ int main() {
     for (int i = 0; i < 3; i++) {
         vector_add_cpu(h_a, h_b, h_c_cpu, N);
         vector_add_gpu<<<num_blocks, BLOCK_SIZE>>>(d_a, d_b, d_c, N);
-        cudaDeviceSynchronize();
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaDeviceSynchronize());
     }
 
     // Benchmark CPU implementation
@@ -95,7 +105,8 @@ int main() {
     for (int i = 0; i < 20; i++) {
         double start_time = get_time();
         vector_add_gpu<<<num_blocks, BLOCK_SIZE>>>(d_a, d_b, d_c, N);
-        cudaDeviceSynchronize();
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaDeviceSynchronize());
         double end_time = get_time();
         gpu_total_time += end_time - start_time;
     }
@@ -107,11 +118,22 @@ int main() {
     printf("Speedup: %fx\n", cpu_avg_time / gpu_avg_time);
 
     // Verify results (optional)
-    cudaMemcpy(h_c_gpu, d_c, size, cudaMemcpyDeviceToHost);
+    cudaError_t copy_err = cudaMemcpy(h_c_gpu, d_c, size, cudaMemcpyDeviceToHost);
+    if (copy_err != cudaSuccess) {
+        printf("cudaMemcpy back to Host failed: %s\n", cudaGetErrorString(copy_err));
+    }
+    
+    // Print first 5 elements for debugging
+    printf("DEBUG - First 5 elements:\n");
+    for (int i = 0; i < 5; i++) {
+        printf("  i=%d: a=%f, b=%f, cpu=%f, gpu=%f\n", i, h_a[i], h_b[i], h_c_cpu[i], h_c_gpu[i]);
+    }
+
     bool correct = true;
     for (int i = 0; i < N; i++) {
         if (fabs(h_c_cpu[i] - h_c_gpu[i]) > 1e-5) {
             correct = false;
+            printf("Mismatch at index %d: cpu=%f, gpu=%f\n", i, h_c_cpu[i], h_c_gpu[i]);
             break;
         }
     }

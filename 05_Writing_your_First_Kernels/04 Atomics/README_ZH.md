@@ -74,7 +74,7 @@ __device__ int softwareAtomicAdd(int* address, int increment) {
 * **“Mutual” (相互/互)**：表示实体（在本项目中指线程）之间的共享关系，说明该排他性对所有参与的线程都一视同仁。
 * **“Exclusion” (排他/斥)**：指防止并发访问的动作。在这里代表在同一时刻阻止多个线程同时访问同一个临界区资源。
 
-下面的完整代码展示了如何利用 `atomicCAS` 实现一个简易自旋锁保护核函数中的临界区计算（对应 [00_atomicAdd.cu](file:///c:/Users/16472/OneDrive/Desktop/Documents/GitHub/CUDA/05_Writing_your_First_Kernels/04%20Atomics/00_atomicAdd.cu) 示例）：
+下面的完整代码展示了如何利用 `atomicCAS` 实现一个简易自旋锁保护核函数中的临界区计算（对应 [00_atomicAdd.cu](./00_atomicAdd.cu) 示例）：
 
 ```cpp
 #include <cuda_runtime.h>

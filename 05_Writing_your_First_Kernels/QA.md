@@ -24,7 +24,7 @@
 **A**:
 在三维配置中，全局线程 ID（`id`）需要根据 Block 级别的偏移量（`block_offset`）和 Thread 级别的偏移量（`thread_offset`）来叠加计算。
 
-具体计算公式如下（参考代码实现：[01_idxing.cu](file:///c:/Users/16472/OneDrive/Desktop/Documents/GitHub/CUDA/05_Writing_your_First_Kernels/01%20CUDA%20Basics/01_idxing.cu)）：
+具体计算公式如下（参考代码实现：[01_idxing.cu](./01%20CUDA%20Basics/01_idxing.cu)）：
 
 1. **计算当前 Block 在 Grid 中的唯一 ID (`block_id`)**：
    `block_id = blockIdx.x + blockIdx.y * gridDim.x + blockIdx.z * gridDim.x * gridDim.y`
@@ -221,7 +221,7 @@ __global__ void whoami(void) {
   在实际开发中，工程师很少让所有线程直接对全局内存进行原子操作。通常先让 Block 内的所有线程在超高速的**共享内存（Shared Memory）**中进行局部累加，最后每个 Block 仅派出一名“代表线程”，使用 `atomicAdd` 将局部总和一次性写入全局内存。这样能将显存冲突的概率减小千倍。
 
 #### 5. 代码示例与运行结果对比 (Code Example & Results Comparison)
-我们以 [00_atomicAdd.cu](file:///c:/Users/16472/OneDrive/Desktop/Documents/GitHub/CUDA/05_Writing_your_First_Kernels/04%20Atomics/00_atomicAdd.cu) 中的累加计数器为例，启动 1000 个 Block，每个 Block 1000 个线程（总计 1,000,000 个线程并发）：
+我们以 [00_atomicAdd.cu](./04%20Atomics/00_atomicAdd.cu) 中的累加计数器为例，启动 1000 个 Block，每个 Block 1000 个线程（总计 1,000,000 个线程并发）：
 
 * **非原子累加核函数 (Incorrect)**：
   ```cpp

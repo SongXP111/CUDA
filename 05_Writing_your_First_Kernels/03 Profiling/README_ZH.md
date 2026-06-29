@@ -8,13 +8,13 @@
    ```
    *(注：在 Windows 上，您可以将生成的 `.nsys-rep` 文件拖入 Nsight Systems GUI 界面进行可视化分析。而在 Linux 上，您也可以通过 SQLite 数据库文件 `.sqlite` 导出数据做更深度的自定义分析)*
 
-2. **编译并分析朴素矩阵乘法**（[01_naive_matmul.cu](file:///c:/Users/16472/OneDrive/Desktop/Documents/GitHub/CUDA/05_Writing_your_First_Kernels/03%20Profiling/01_naive_matmul.cu)）：
+2. **编译并分析朴素矩阵乘法**（[01_naive_matmul.cu](./01_naive_matmul.cu)）：
    ```bash
    nvcc -gencode arch=compute_120,code=sm_120 -o 01 01_naive_matmul.cu
    nsys profile --stats=true ./01
    ```
 
-3. **编译并分析共享内存（分块）矩阵乘法**（[02_tiled_matmul.cu](file:///c:/Users/16472/OneDrive/Desktop/Documents/GitHub/CUDA/05_Writing_your_First_Kernels/03%20Profiling/02_tiled_matmul.cu)）：
+3. **编译并分析共享内存（分块）矩阵乘法**（[02_tiled_matmul.cu](./02_tiled_matmul.cu)）：
    ```bash
    nvcc -gencode arch=compute_120,code=sm_120 -o 02 02_tiled_matmul.cu
    nsys profile --stats=true ./02

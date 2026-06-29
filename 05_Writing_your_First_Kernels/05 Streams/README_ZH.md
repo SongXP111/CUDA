@@ -39,8 +39,8 @@
 ---
 
 ## 📂 示例文件
-1. [01_stream_basics.cu](file:///c:/Users/16472/OneDrive/Desktop/Documents/GitHub/CUDA/05_Writing_your_First_Kernels/05%20Streams/01_stream_basics.cu)：演示基本的流用法，包括异步内存传输和核函数启动。
-2. [02_stream_advanced.cu](file:///c:/Users/16472/OneDrive/Desktop/Documents/GitHub/CUDA/05_Writing_your_First_Kernels/05%20Streams/02_stream_advanced.cu) ：演示流优先级、回调函数以及流之间的 Event 依赖关系等高级概念。
+1. [01_stream_basics.cu](./01_stream_basics.cu)：演示基本的流用法，包括异步内存传输和核函数启动。
+2. [02_stream_advanced.cu](./02_stream_advanced.cu) ：演示流优先级、回调函数以及流之间的 Event 依赖关系等高级概念。
 
 ---
 

@@ -2,11 +2,10 @@
 #include <stdio.h>
 #include <iostream>
 
-#define CHECK_CUDA_ERROR(val) check((val), #val, __FILE__, __LINE__)
-template <typename T>
-void check(T err, const char* const func, const char* const file, const int line) {
+#define CUDA_CHECK(val) check((val), #val, __FILE__, __LINE__)
+inline void check(cudaError_t err, const char* const func, const char* const file, const int line) {
     if (err != cudaSuccess) {
-        fprintf(stderr, "CUDA error at %s:%d code=%d(%s) \"%s\" \n", file, line, static_cast<unsigned int>(err), cudaGetErrorString(err), func);
+        fprintf(stderr, "CUDA error at %s:%d code=%d(%s) \"%s\" \n", file, line, err, cudaGetErrorString(err), func);
         exit(EXIT_FAILURE);
     }
 }
@@ -38,8 +37,8 @@ int main(void) {
     std::cout << event << std::endl;
 
     // Allocate host and device memory
-    CHECK_CUDA_ERROR(cudaMallocHost(&h_data, size));  // Pinned memory for faster transfers
-    CHECK_CUDA_ERROR(cudaMalloc(&d_data, size));
+    CUDA_CHECK(cudaMallocHost(&h_data, size));  // Pinned memory for faster transfers
+    CUDA_CHECK(cudaMalloc(&d_data, size));
 
     // Initialize data
     for (int i = 0; i < N; ++i) {
@@ -48,35 +47,35 @@ int main(void) {
 
     // Create streams with different priorities
     int leastPriority, greatestPriority;
-    CHECK_CUDA_ERROR(cudaDeviceGetStreamPriorityRange(&leastPriority, &greatestPriority));
-    CHECK_CUDA_ERROR(cudaStreamCreateWithPriority(&stream1, cudaStreamNonBlocking, leastPriority));
-    CHECK_CUDA_ERROR(cudaStreamCreateWithPriority(&stream2, cudaStreamNonBlocking, greatestPriority));
+    CUDA_CHECK(cudaDeviceGetStreamPriorityRange(&leastPriority, &greatestPriority));
+    CUDA_CHECK(cudaStreamCreateWithPriority(&stream1, cudaStreamNonBlocking, leastPriority));
+    CUDA_CHECK(cudaStreamCreateWithPriority(&stream2, cudaStreamNonBlocking, greatestPriority));
 
     // Create event
-    CHECK_CUDA_ERROR(cudaEventCreate(&event));
+    CUDA_CHECK(cudaEventCreate(&event));
 
     // Asynchronous memory copy and kernel execution in stream1
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(d_data, h_data, size, cudaMemcpyHostToDevice, stream1));
+    CUDA_CHECK(cudaMemcpyAsync(d_data, h_data, size, cudaMemcpyHostToDevice, stream1));
     kernel1<<<(N + 255) / 256, 256, 0, stream1>>>(d_data, N);
 
     // Record event in stream1
-    CHECK_CUDA_ERROR(cudaEventRecord(event, stream1));
+    CUDA_CHECK(cudaEventRecord(event, stream1));
 
     // Make stream2 wait for event
-    CHECK_CUDA_ERROR(cudaStreamWaitEvent(stream2, event, 0));
+    CUDA_CHECK(cudaStreamWaitEvent(stream2, event, 0));
 
     // Execute kernel in stream2
     kernel2<<<(N + 255) / 256, 256, 0, stream2>>>(d_data, N);
 
     // Add callback to stream2
-    CHECK_CUDA_ERROR(cudaStreamAddCallback(stream2, myStreamCallback, NULL, 0));
+    CUDA_CHECK(cudaStreamAddCallback(stream2, myStreamCallback, NULL, 0));
 
     // Asynchronous memory copy back to host
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(h_data, d_data, size, cudaMemcpyDeviceToHost, stream2));
+    CUDA_CHECK(cudaMemcpyAsync(h_data, d_data, size, cudaMemcpyDeviceToHost, stream2));
 
     // Synchronize streams
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream1));
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream2));
+    CUDA_CHECK(cudaStreamSynchronize(stream1));
+    CUDA_CHECK(cudaStreamSynchronize(stream2));
 
     // Verify result
     for (int i = 0; i < N; ++i) {
@@ -90,11 +89,11 @@ int main(void) {
     printf("Test PASSED\n");
 
     // Clean up
-    CHECK_CUDA_ERROR(cudaFreeHost(h_data));
-    CHECK_CUDA_ERROR(cudaFree(d_data));
-    CHECK_CUDA_ERROR(cudaStreamDestroy(stream1));
-    CHECK_CUDA_ERROR(cudaStreamDestroy(stream2));
-    CHECK_CUDA_ERROR(cudaEventDestroy(event));
+    CUDA_CHECK(cudaFreeHost(h_data));
+    CUDA_CHECK(cudaFree(d_data));
+    CUDA_CHECK(cudaStreamDestroy(stream1));
+    CUDA_CHECK(cudaStreamDestroy(stream2));
+    CUDA_CHECK(cudaEventDestroy(event));
 
     return 0;
 }

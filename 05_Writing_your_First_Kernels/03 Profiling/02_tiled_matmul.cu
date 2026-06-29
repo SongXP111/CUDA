@@ -1,6 +1,14 @@
 #include <cuda_runtime.h>
 #include <iostream>
 
+#define CUDA_CHECK(val) check((val), #val, __FILE__, __LINE__)
+inline void check(cudaError_t err, const char* const func, const char* const file, const int line) {
+    if (err != cudaSuccess) {
+        fprintf(stderr, "CUDA error at %s:%d code=%d(%s) \"%s\" \n", file, line, err, cudaGetErrorString(err), func);
+        exit(EXIT_FAILURE);
+    }
+}
+
 #define TILE_SIZE 16
 
 __global__ void matrixMultiplyOptimized(float* A, float* B, float* C, int M, int N, int K) {
@@ -54,30 +62,26 @@ int main() {
     float *d_A, *d_B, *d_C;
 
     // Allocate device memory
-    cudaMalloc(&d_A, size_A);
-    cudaMalloc(&d_B, size_B);
-    cudaMalloc(&d_C, size_C);
+    CUDA_CHECK(cudaMalloc(&d_A, size_A));
+    CUDA_CHECK(cudaMalloc(&d_B, size_B));
+    CUDA_CHECK(cudaMalloc(&d_C, size_C));
 
 
     // Kernel launch code
     dim3 blockDim(TILE_SIZE, TILE_SIZE);
     dim3 gridDim((N + TILE_SIZE - 1) / TILE_SIZE, (M + TILE_SIZE - 1) / TILE_SIZE);
     matrixMultiplyOptimized<<<gridDim, blockDim>>>(d_A, d_B, d_C, M, N, K);
+    CUDA_CHECK(cudaGetLastError());
 
     // Synchronize device
-    cudaDeviceSynchronize();
+    CUDA_CHECK(cudaDeviceSynchronize());
 
     // Free device memory
-    cudaFree(d_A);
-    cudaFree(d_B);
-    cudaFree(d_C);
+    CUDA_CHECK(cudaFree(d_A));
+    CUDA_CHECK(cudaFree(d_B));
+    CUDA_CHECK(cudaFree(d_C));
 
-    // Check for any CUDA errors
-    cudaError_t error = cudaGetLastError();
-    if (error != cudaSuccess) {
-        std::cerr << "CUDA error: " << cudaGetErrorString(error) << std::endl;
-        return -1;
-    }
+
 
     return 0;
 

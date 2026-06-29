@@ -1,5 +1,13 @@
 #include <stdio.h>
 
+#define CUDA_CHECK(val) check((val), #val, __FILE__, __LINE__)
+inline void check(cudaError_t err, const char* const func, const char* const file, const int line) {
+    if (err != cudaSuccess) {
+        fprintf(stderr, "CUDA error at %s:%d code=%d(%s) \"%s\" \n", file, line, err, cudaGetErrorString(err), func);
+        exit(EXIT_FAILURE);
+    }
+}
+
 __global__ void whoami(void) {
     int block_id =
         blockIdx.x +    // apartment number on this floor (points across)
@@ -40,5 +48,6 @@ int main(int argc, char **argv) {
     dim3 threadsPerBlock(t_x, t_y, t_z); // 3d cube of shape 4*4*4 = 64
 
     whoami<<<blocksPerGrid, threadsPerBlock>>>();
-    cudaDeviceSynchronize();
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
 }

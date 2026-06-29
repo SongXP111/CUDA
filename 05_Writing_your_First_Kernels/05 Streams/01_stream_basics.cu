@@ -1,12 +1,11 @@
 #include <cuda_runtime.h>
 #include <stdio.h>
 
-#define CHECK_CUDA_ERROR(val) check((val), #val, __FILE__, __LINE__)
+#define CUDA_CHECK(val) check((val), #val, __FILE__, __LINE__)
 
-template <typename T>
-void check(T err, const char* const func, const char* const file, const int line) {
+inline void check(cudaError_t err, const char* const func, const char* const file, const int line) {
     if (err != cudaSuccess) {
-        fprintf(stderr, "CUDA error at %s:%d code=%d(%s) \"%s\" \n", file, line, static_cast<unsigned int>(err), cudaGetErrorString(err), func);
+        fprintf(stderr, "CUDA error at %s:%d code=%d(%s) \"%s\" \n", file, line, err, cudaGetErrorString(err), func);
         exit(EXIT_FAILURE);
     }
 }
@@ -37,20 +36,20 @@ int main(void) {
     }
 
     // Allocate device memory
-    CHECK_CUDA_ERROR(cudaMalloc((void **)&d_A, size));
-    CHECK_CUDA_ERROR(cudaMalloc((void **)&d_B, size));
-    CHECK_CUDA_ERROR(cudaMalloc((void **)&d_C, size));
+    CUDA_CHECK(cudaMalloc((void **)&d_A, size));
+    CUDA_CHECK(cudaMalloc((void **)&d_B, size));
+    CUDA_CHECK(cudaMalloc((void **)&d_C, size));
 
     // Create streams
-    CHECK_CUDA_ERROR(cudaStreamCreate(&stream1));
-    CHECK_CUDA_ERROR(cudaStreamCreate(&stream2));
+    CUDA_CHECK(cudaStreamCreate(&stream1));
+    CUDA_CHECK(cudaStreamCreate(&stream2));
 
     // Copy inputs to device asynchronously
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(d_A, h_A, size, cudaMemcpyHostToDevice, stream1));
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(d_B, h_B, size, cudaMemcpyHostToDevice, stream2));
+    CUDA_CHECK(cudaMemcpyAsync(d_A, h_A, size, cudaMemcpyHostToDevice, stream1));
+    CUDA_CHECK(cudaMemcpyAsync(d_B, h_B, size, cudaMemcpyHostToDevice, stream2));
     
     // make sure d_B is copied before launching kernel that uses it
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream2));
+    CUDA_CHECK(cudaStreamSynchronize(stream2));
 
     // Launch kernels
     int threadsPerBlock = 256;
@@ -58,11 +57,11 @@ int main(void) {
     vectorAdd<<<blocksPerGrid, threadsPerBlock, 0, stream1>>>(d_A, d_B, d_C, numElements);
 
     // Copy result back to host asynchronously
-    CHECK_CUDA_ERROR(cudaMemcpyAsync(h_C, d_C, size, cudaMemcpyDeviceToHost, stream1));
+    CUDA_CHECK(cudaMemcpyAsync(h_C, d_C, size, cudaMemcpyDeviceToHost, stream1));
 
     // Synchronize streams
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream1));
-    CHECK_CUDA_ERROR(cudaStreamSynchronize(stream2));
+    CUDA_CHECK(cudaStreamSynchronize(stream1));
+    CUDA_CHECK(cudaStreamSynchronize(stream2));
 
     // Verify result
     for (int i = 0; i < numElements; ++i) {
@@ -75,11 +74,11 @@ int main(void) {
     printf("Test PASSED\n");
 
     // Clean up
-    CHECK_CUDA_ERROR(cudaFree(d_A));
-    CHECK_CUDA_ERROR(cudaFree(d_B));
-    CHECK_CUDA_ERROR(cudaFree(d_C));
-    CHECK_CUDA_ERROR(cudaStreamDestroy(stream1));
-    CHECK_CUDA_ERROR(cudaStreamDestroy(stream2));
+    CUDA_CHECK(cudaFree(d_A));
+    CUDA_CHECK(cudaFree(d_B));
+    CUDA_CHECK(cudaFree(d_C));
+    CUDA_CHECK(cudaStreamDestroy(stream1));
+    CUDA_CHECK(cudaStreamDestroy(stream2));
     free(h_A);
     free(h_B);
     free(h_C);

@@ -154,6 +154,7 @@ int main() {
     const int benchmark_runs = 20;
 
     // cuBLAS FP32
+    CHECK_CUDA(cudaMemset(d_C, 0, M * N * sizeof(float)));
     float cublas_fp32_time = benchmark_kernel([&]() {
         CHECK_CUBLAS(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha, d_B, N, d_A, K, &beta, d_C, N));
     }, warmup_runs, benchmark_runs);
@@ -169,6 +170,7 @@ int main() {
     CHECK_CUBLAS(cublasLtMatrixLayoutCreate(&Bdesc, CUDA_R_32F, N, K, N)); // original K N K
     CHECK_CUBLAS(cublasLtMatrixLayoutCreate(&Cdesc, CUDA_R_32F, N, M, N)); // original M N M
 
+    CHECK_CUDA(cudaMemset(d_C, 0, M * N * sizeof(float)));
     float cublasLt_fp32_time = benchmark_kernel([&]() {
         CHECK_CUBLAS(cublasLtMatmul(cublasLt_handle, operationDesc, &alpha, d_B, Bdesc, d_A, Adesc, &beta, d_C, Cdesc, d_C, Cdesc, nullptr, nullptr, 0, 0));
     }, warmup_runs, benchmark_runs);
@@ -177,6 +179,7 @@ int main() {
     CHECK_CUDA(cudaMemcpy(h_C_cublasLt_fp32.data(), d_C, M * N * sizeof(float), cudaMemcpyDeviceToHost));
 
     // cuBLAS FP16
+    CHECK_CUDA(cudaMemset(d_C_half, 0, M * N * sizeof(half)));
     float cublas_fp16_time = benchmark_kernel([&]() {
         CHECK_CUBLAS(cublasHgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha_half, d_B_half, N, d_A_half, K, &beta_half, d_C_half, N));
     }, warmup_runs, benchmark_runs);
@@ -194,6 +197,7 @@ int main() {
     CHECK_CUBLAS(cublasLtMatrixLayoutCreate(&Bdesc_half, CUDA_R_16F, N, K, N)); 
     CHECK_CUBLAS(cublasLtMatrixLayoutCreate(&Cdesc_half, CUDA_R_16F, N, M, N)); 
 
+    CHECK_CUDA(cudaMemset(d_C_half, 0, M * N * sizeof(half)));
     float cublasLt_fp16_time = benchmark_kernel([&]() {
         CHECK_CUBLAS(cublasLtMatmul(cublasLt_handle, operationDesc_half, &alpha_half, d_B_half, Bdesc_half, d_A_half, Adesc_half, &beta_half, d_C_half, Cdesc_half, d_C_half, Cdesc_half, nullptr, nullptr, 0, 0));
     }, warmup_runs, benchmark_runs);
@@ -203,11 +207,13 @@ int main() {
     for (int i = 0; i < M * N; ++i) h_C_cublasLt_fp16[i] = __half2float(h_C_half[i]);
 
     // Naive CUDA kernel
-    dim3 blockDim(32, 32);
+    dim3 blockDim(16, 16);
     dim3 gridDim((N + blockDim.x - 1) / blockDim.x, (M + blockDim.y - 1) / blockDim.y);
 
+    CHECK_CUDA(cudaMemset(d_C, 0, M * N * sizeof(float)));
     float naive_cuda_time = benchmark_kernel([&]() {
         naiveMatrixMultiply<<<gridDim, blockDim>>>(d_A, d_B, d_C, M, N, K);
+        CHECK_CUDA(cudaGetLastError());
     }, warmup_runs, benchmark_runs);
     std::cout << "Naive CUDA kernel average time: " << naive_cuda_time << " ms" << std::endl;
 

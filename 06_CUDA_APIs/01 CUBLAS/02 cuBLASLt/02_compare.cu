@@ -110,6 +110,11 @@ float benchmark_kernel(std::function<void()> kernel_func, int warmup_runs, int b
     return avg_time;
 }
 
+double calculate_tflops(float elapsed_time_ms, int m, int n, int k) {
+    double flops = 2.0 * m * n * k;
+    return flops / (elapsed_time_ms * 1.0e9);
+}
+
 int main() {
     std::cout << "matrix size: " << M << "x" << K << " * " << K << "x" << N << std::endl;
     std::vector<float> h_A(M * K), h_B(K * N), h_C(M * N);
@@ -120,6 +125,9 @@ int main() {
     initializeMatrix(h_A, M, K);
     initializeMatrix(h_B, K, N);
 
+    size_t free_mem_before, total_mem;
+    CHECK_CUDA(cudaMemGetInfo(&free_mem_before, &total_mem));
+
     float *d_A, *d_B, *d_C;
     half *d_A_half, *d_B_half, *d_C_half;
 
@@ -129,6 +137,20 @@ int main() {
     CHECK_CUDA(cudaMalloc(&d_A_half, M * K * sizeof(half)));
     CHECK_CUDA(cudaMalloc(&d_B_half, K * N * sizeof(half)));
     CHECK_CUDA(cudaMalloc(&d_C_half, M * N * sizeof(half)));
+
+    size_t free_mem_after;
+    CHECK_CUDA(cudaMemGetInfo(&free_mem_after, &total_mem));
+
+    size_t fp32_bytes = (M * K + K * N + M * N) * sizeof(float);
+    size_t fp16_bytes = (M * K + K * N + M * N) * sizeof(half);
+    
+    std::cout << "--- GPU VRAM Consumption Report ---" << std::endl;
+    std::cout << "VRAM footprint of FP32 matrices (A, B, C): " << (double)fp32_bytes / (1024.0 * 1024.0) << " MB" << std::endl;
+    std::cout << "VRAM footprint of FP16 matrices (A_half, B_half, C_half): " << (double)fp16_bytes / (1024.0 * 1024.0) << " MB" << std::endl;
+    std::cout << "Total GPU Memory occupied by allocated matrices: " << (double)(fp32_bytes + fp16_bytes) / (1024.0 * 1024.0) << " MB" << std::endl;
+    std::cout << "Measured GPU VRAM allocation change: " << (double)(free_mem_before - free_mem_after) / (1024.0 * 1024.0) << " MB" << std::endl;
+    std::cout << "Current Free VRAM: " << (double)free_mem_after / (1024.0 * 1024.0) << " MB / Total: " << (double)total_mem / (1024.0 * 1024.0) << " MB" << std::endl;
+    std::cout << "-----------------------------------" << std::endl;
 
     CHECK_CUDA(cudaMemcpy(d_A, h_A.data(), M * K * sizeof(float), cudaMemcpyHostToDevice));
     CHECK_CUDA(cudaMemcpy(d_B, h_B.data(), K * N * sizeof(float), cudaMemcpyHostToDevice));
@@ -158,7 +180,8 @@ int main() {
     float cublas_fp32_time = benchmark_kernel([&]() {
         CHECK_CUBLAS(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha, d_B, N, d_A, K, &beta, d_C, N));
     }, warmup_runs, benchmark_runs);
-    std::cout << "cuBLAS FP32 average time: " << cublas_fp32_time << " ms" << std::endl;
+    std::cout << "cuBLAS FP32 average time: " << cublas_fp32_time << " ms (" 
+              << calculate_tflops(cublas_fp32_time, M, N, K) << " TFLOPS)" << std::endl;
 
     CHECK_CUDA(cudaMemcpy(h_C_cublas_fp32.data(), d_C, M * N * sizeof(float), cudaMemcpyDeviceToHost));
 
@@ -174,7 +197,8 @@ int main() {
     float cublasLt_fp32_time = benchmark_kernel([&]() {
         CHECK_CUBLAS(cublasLtMatmul(cublasLt_handle, operationDesc, &alpha, d_B, Bdesc, d_A, Adesc, &beta, d_C, Cdesc, d_C, Cdesc, nullptr, nullptr, 0, 0));
     }, warmup_runs, benchmark_runs);
-    std::cout << "cuBLASLt FP32 average time: " << cublasLt_fp32_time << " ms" << std::endl;
+    std::cout << "cuBLASLt FP32 average time: " << cublasLt_fp32_time << " ms (" 
+              << calculate_tflops(cublasLt_fp32_time, M, N, K) << " TFLOPS)" << std::endl;
 
     CHECK_CUDA(cudaMemcpy(h_C_cublasLt_fp32.data(), d_C, M * N * sizeof(float), cudaMemcpyDeviceToHost));
 
@@ -183,7 +207,8 @@ int main() {
     float cublas_fp16_time = benchmark_kernel([&]() {
         CHECK_CUBLAS(cublasHgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N, N, M, K, &alpha_half, d_B_half, N, d_A_half, K, &beta_half, d_C_half, N));
     }, warmup_runs, benchmark_runs);
-    std::cout << "cuBLAS FP16 average time: " << cublas_fp16_time << " ms" << std::endl;
+    std::cout << "cuBLAS FP16 average time: " << cublas_fp16_time << " ms (" 
+              << calculate_tflops(cublas_fp16_time, M, N, K) << " TFLOPS)" << std::endl;
 
     std::vector<half> h_C_half(M * N);
     CHECK_CUDA(cudaMemcpy(h_C_half.data(), d_C_half, M * N * sizeof(half), cudaMemcpyDeviceToHost));
@@ -201,7 +226,8 @@ int main() {
     float cublasLt_fp16_time = benchmark_kernel([&]() {
         CHECK_CUBLAS(cublasLtMatmul(cublasLt_handle, operationDesc_half, &alpha_half, d_B_half, Bdesc_half, d_A_half, Adesc_half, &beta_half, d_C_half, Cdesc_half, d_C_half, Cdesc_half, nullptr, nullptr, 0, 0));
     }, warmup_runs, benchmark_runs);
-    std::cout << "cuBLASLt FP16 average time: " << cublasLt_fp16_time << " ms" << std::endl;
+    std::cout << "cuBLASLt FP16 average time: " << cublasLt_fp16_time << " ms (" 
+              << calculate_tflops(cublasLt_fp16_time, M, N, K) << " TFLOPS)" << std::endl;
 
     CHECK_CUDA(cudaMemcpy(h_C_half.data(), d_C_half, M * N * sizeof(half), cudaMemcpyDeviceToHost));
     for (int i = 0; i < M * N; ++i) h_C_cublasLt_fp16[i] = __half2float(h_C_half[i]);
@@ -215,7 +241,8 @@ int main() {
         naiveMatrixMultiply<<<gridDim, blockDim>>>(d_A, d_B, d_C, M, N, K);
         CHECK_CUDA(cudaGetLastError());
     }, warmup_runs, benchmark_runs);
-    std::cout << "Naive CUDA kernel average time: " << naive_cuda_time << " ms" << std::endl;
+    std::cout << "Naive CUDA kernel average time: " << naive_cuda_time << " ms (" 
+              << calculate_tflops(naive_cuda_time, M, N, K) << " TFLOPS)" << std::endl;
 
     CHECK_CUDA(cudaMemcpy(h_C_naive.data(), d_C, M * N * sizeof(float), cudaMemcpyDeviceToHost));
 

@@ -1,6 +1,6 @@
-# CUDA 学习问答记录 (CUDA Learning Q&A)
+# 第五章 Q&A：编写你的第一个 CUDA 核函数 (05 Writing your First Kernels)
 
-这个文档用于记录在 CUDA 学习和开发过程中遇到的常见问题、概念混淆点、调试技巧以及性能优化经验。
+本文档记录第五章学习过程中遇到的常见问题与核心概念，涵盖 CUDA 基础（线程/块/网格）、核函数编写、性能分析（Profiling）、原子操作（Atomics）以及流（Streams）。
 
 ---
 
@@ -13,7 +13,7 @@
 - [Q6: 为什么核函数执行后立即调用 `cudaGetLastError()` 无法捕获异步执行中的运行时错误？](#q6-为什么核函数执行后立即调用-cudagetlasterror-无法捕获异步执行中的运行时错误)
 - [Q7: 什么是全局内存合并访问 (Coalesced Memory Access)？](#q7-什么是全局内存合并访问-coalesced-memory-access)
 - [Q8: 请用通俗的比喻解释 CUDA 软件层（线程）与硬件层（显卡芯片）的完整架构映射？](#q8-请用通俗的比喻解释-cuda-软件层线程与硬件层显卡芯片的完整架构映射)
-- [Q9: cudaDeviceSynchronize()、__syncthreads() 和 __syncwarps() 三种同步函数有什么区别 and 联系？](#q9-cudadevicesynchronize__syncthreads-和-__syncwarps-三种同步函数有什么区别-和-联系)
+- [Q9: cudaDeviceSynchronize()、__syncthreads() 和 __syncwarp() 三种同步函数有什么区别和联系？](#q9-cudadevicesynchronize__syncthreads-和-__syncwarp-三种同步函数有什么区别和联系)
 - [Q10: 什么是 CUDA 原子操作 (Atomic Operations)？为什么需要它？有哪些主要函数及代价？](#q10-什么是-cuda-原子操作-atomic-operations为什么需要它有哪些主要函数及代价)
 - [Q11: 关于 CUDA 原子操作 (Atomic Operations)，在实际开发和面试中需要掌握到什么程度？](#q11-关于-cuda-原子操作-atomic-operations在实际开发和面试中需要掌握到什么程度)
 - [Q12: 结合 Thread、Block、Grid 解释 CUDA Stream (流) 的底层工作原理与软硬件映射？](#q12-结合-threadblockgrid-解释-cuda-stream-流的底层工作原理与软硬件映射)
@@ -66,7 +66,7 @@ __global__ void whoami(void) {
 **A**:
 这些变量是 **CUDA 运行时内置的预定义变量**，不需要显式声明或初始化。
 * **底层机制**：当使用 `nvcc` 编译带有 `__global__` 或 `__device__` 修饰符的函数时，编译器会自动识别并生成获取这些变量值的底层代码。在 GPU 执行核函数时，GPU 硬件调度单元会为每个线程自动填充当前线程对应的位置数据。
-* **数据类型**：它们的类型是内置的三维无符号整型结构体 `uint3`（或者是 `dim3` 类型的只读常量），包含成员 `.x`、`.y`、`.z`。
+* **数据类型**：`threadIdx` 和 `blockIdx` 的类型是内置的三维无符号整型结构体 `uint3`；而 `blockDim` 和 `gridDim` 的类型是 `dim3`（本质上也是三维无符号整型，但支持从标量隐式构造）。它们都包含成员 `.x`、`.y`、`.z`。
 * **只读限制**：它们对线程而言是只读的，不可被修改。
 
 ---
@@ -97,7 +97,7 @@ __global__ void whoami(void) {
 | 特性 | CUDA Kernel (核函数) | 普通 CPU Function (普通函数) |
 | :--- | :--- | :--- |
 | **执行硬件** | GPU (显卡设备) | CPU (主机端) |
-| **执行方式** | **多线程并行**（由配置的网格 and 块启动成千上万个线程） | **单线程串行**（由单个 CPU 线程调用并顺序执行） |
+| **执行方式** | **多线程并行**（由配置的网格和线程块启动成千上万个线程） | **单线程串行**（由单个 CPU 线程调用并顺序执行） |
 | **同步行为** | **异步启动**（调用后 CPU 不阻塞，会立即运行后续代码） | **同步调用**（运行完毕后才返回，阻塞当前线程） |
 | **返回值** | **必须是 `void`**（结果必须写入显存指针传回） | 可以是任何有效的数据类型 |
 | **修饰符** | 用 `__global__` 声明，通过 `<<<grid, block>>>` 调用 | 无特殊修饰符，或使用 `__host__` |
@@ -170,7 +170,7 @@ __global__ void whoami(void) {
 
 ---
 
-### Q9: `cudaDeviceSynchronize()`、`__syncthreads()` 和 `__syncwarps()` 三种同步函数有什么区别和联系？
+### Q9: `cudaDeviceSynchronize()`、`__syncthreads()` 和 `__syncwarp()` 三种同步函数有什么区别和联系？
 **A**:
 在 CUDA 中，由于线程执行完全是异步且无序的，我们需要在不同层级进行“对齐”。这三个同步函数构成了从**主机端到设备端不同颗粒度**的栅栏同步机制：
 
@@ -178,14 +178,14 @@ __global__ void whoami(void) {
 | :--- | :--- | :--- | :--- | :--- |
 | **`cudaDeviceSynchronize()`** | **全局设备（GPU 整体）** | **CPU** 主线程等待 **GPU** 上当前排队的所有任务完成。 | CPU 端主机代码 (Host Code) | - 精确测量 GPU 时间；<br>- 确保 GPU 的 `printf` 打印刷入控制台；<br>- 确保主程序退出前 GPU 计算完毕。 |
 | **`__syncthreads()`** | **线程块（Block 内部）** | **Block 内的所有线程**在代码栅栏处等齐。 | GPU 端核函数代码 (Kernel) | - 在使用**共享内存 (Shared Memory)** 时，防止产生写后读 (RAW) 等数据竞争。 |
-| **`__syncwarps()`** | **线程束（Warp 内部，32线程）**| **Warp 内活跃的线程**进行同步和内存栅栏。 | GPU 端核函数代码 (Kernel) | - 自 Volta 架构开始，GPU 引入了“独立线程调度”，Warp 内线程不再绝对同步执行，必须使用此函数确保 Warp 内寄存器交换安全。 |
+| **`__syncwarp()`** | **线程束（Warp 内部，32线程）**| **Warp 内活跃的线程**进行同步和内存栅栏。 | GPU 端核函数代码 (Kernel) | - 自 Volta 架构开始，GPU 引入了"独立线程调度"，Warp 内线程不再绝对同步执行，必须使用此函数确保 Warp 内寄存器交换安全。 |
 
 #### 深度联系与注意事项：
-1. **CPU vs GPU 视角**：`cudaDeviceSynchronize()` 是由 CPU 主动发起的，用于控制 CPU 和 GPU 之间的步调；而 `__syncthreads()` 和 `__syncwarps()` 是 GPU 内部线程之间发起的，CPU 对此完全不知情。
+1. **CPU vs GPU 视角**：`cudaDeviceSynchronize()` 是由 CPU 主动发起的，用于控制 CPU 和 GPU 之间的步调；而 `__syncthreads()` 和 `__syncwarp()` 是 GPU 内部线程之间发起的，CPU 对此完全不知情。
 2. **分支分化陷阱（重要）**：
-   In 核函数的 `if-else` 分支中调用 `__syncthreads()` 是极其危险的！如果同一个 Block 内有的线程进入了 `if` 分支，有的进入了 `else` 分支，只有一部分线程能到达 `__syncthreads()`，那么整个 Block 就会**永久陷入死锁**。
+   在核函数的 `if-else` 分支中调用 `__syncthreads()` 是极其危险的！如果同一个 Block 内有的线程进入了 `if` 分支，有的进入了 `else` 分支，只有一部分线程能到达 `__syncthreads()`，那么整个 Block 就会**永久陷入死锁**。
 3. **Warp 同步的演变**：
-   在老旧显卡（Pascal 架构及更早）上，Warp 内部 32 个线程物理上锁步执行，所以不需要同步。但从 **Volta、Ampere、Ada Lovelace 直至 Blackwell** 架构，GPU 引入了**独立线程调度（Independent Thread Scheduling）**，即使在同一个 Warp 内，不同的线程也可以独立分支、走不同的执行路径。因此，如果你在同一个 Warp 的线程间交换数据（如 Shuffle 指令），**必须使用 `__syncwarps()` 强制进行 Warp 内的同步与内存栅栏**，否则会产生严重的错误值。
+   在老旧显卡（Pascal 架构及更早）上，Warp 内部 32 个线程物理上锁步执行，所以不需要同步。但从 **Volta、Ampere、Ada Lovelace 直至 Blackwell** 架构，GPU 引入了**独立线程调度（Independent Thread Scheduling）**，即使在同一个 Warp 内，不同的线程也可以独立分支、走不同的执行路径。因此，如果你在同一个 Warp 的线程间交换数据（如 Shuffle 指令），**必须使用 `__syncwarp()` 强制进行 Warp 内的同步与内存栅栏**，否则会产生严重的错误值。
 
 ---
 
@@ -242,7 +242,7 @@ __global__ void whoami(void) {
   通过 `atomicAdd` 保证“读-改-写”的原子性，所有线程串行排队更新，数据无丢失。
 
 * **实际运行输出对比**：
-  In NVIDIA GeForce RTX 5080 Laptop GPU 上执行输出：
+  在 NVIDIA GeForce RTX 5080 Laptop GPU 上执行输出：
   * **Non-atomic counter value**: 49 (由于大量碰撞，只成功累加了极少次)
   * **Atomic counter value**: 1000000 (精确无误)
 
@@ -301,7 +301,7 @@ __global__ void whoami(void) {
 * **Stream (流)**：最外层的**流水线队列**。一个流里可以按顺序排放多个 **Grid** 和内存拷贝任务。
   * **Grid (网格)**：代表**一次核函数的启动任务**。
     * **Block (线程块)**：由 GPU 调度器分发到各个 **SM**（流多处理器）上执行。
-      * **Thread (线程)**：在 SM 内部，由 **CUDA Core** 最终执行的物理算子（以 32 线程 of Warp 为单位调度）。
+      * **Thread (线程)**：在 SM 内部，由 **CUDA Core** 最终执行的物理算子（以 32 个线程组成一个 Warp 为最小调度单位）。
 
 ---
 

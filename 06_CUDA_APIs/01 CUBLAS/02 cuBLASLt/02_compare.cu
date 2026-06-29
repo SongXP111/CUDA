@@ -4,7 +4,6 @@
 #include <cuda_fp16.h>
 #include <iostream>
 #include <vector>
-#include <iomanip>
 #include <functional>
 #include <random>
 #include <numeric>

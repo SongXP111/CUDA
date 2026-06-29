@@ -53,4 +53,6 @@
 
 > 完整 Q&A 文档：[06_CUDA_APIs/QA.md](./06_CUDA_APIs/QA.md)
 
-*(随学习进度持续更新)*
+* 🧮 **cuBLAS 矩阵计算库**
+  * [Q1: 为什么 cuBLAS 库底层默认要求输入矩阵是列优先 (Column-Major) 存储？在 C/C++ 中该如何应对？](./06_CUDA_APIs/QA.md#q1-为什么-cublas-库底层默认要求输入矩阵是列优先-column-major-存储在-cc-中该如何应对)
+

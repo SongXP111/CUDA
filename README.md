@@ -60,4 +60,8 @@
 * 🧠 **cuDNN 深度神经网络加速库**
   * [Q4: 在 AI Infra (AI 工程基建) 领域，对于 cuDNN 必须掌握的核心知识点有哪些？](./06_CUDA_APIs/QA.md#q4-在-ai-infra-ai-工程基建-领域对于-cudnn-必须掌握的核心知识点有哪些)
   * [Q5: 什么是 Pointwise (点对点/逐元素) 算子？为什么它在 GPU 性能调优中如此重要？](./06_CUDA_APIs/QA.md#q5-什么是-pointwise-点对点逐元素-算子为什么它在-gpu-性能调优中如此重要)
+  * [Q6: cuDNN Graph API 是如何通过运行时即时编译 (JIT) 实现算子融合并让数据在寄存器中流转的？](./06_CUDA_APIs/QA.md#q6-cudnn-graph-api-是如何通过运行时即时编译-jit-实现算子融合并让数据在寄存器中流转的)
+  * [Q7: 什么是 NCHW 与 NHWC 数据排布格式？为什么在 GPU 性能调优中更推荐使用 NHWC (Channels-Last)？](./06_CUDA_APIs/QA.md#q7-什么是-nchw-与-nhwc-数据排布格式为什么在-gpu-性能调优中更推荐使用-nhwc-channels-last)
+
+
 

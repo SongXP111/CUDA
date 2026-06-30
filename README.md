@@ -55,4 +55,5 @@
 
 * 🧮 **cuBLAS 矩阵计算库**
   * [Q1: 为什么 cuBLAS 库底层默认要求输入矩阵是列优先 (Column-Major) 存储？在 C/C++ 中该如何应对？](./06_CUDA_APIs/QA.md#q1-为什么-cublas-库底层默认要求输入矩阵是列优先-column-major-存储在-cc-中该如何应对)
-
+  * [Q2: 在 GPU 上运行单精度 (SGEMM) 与半精度 (HGEMM) 矩阵乘法，在显存消耗、计算速度以及精度误差上有什么实际差距？（附实验数据）](./06_CUDA_APIs/QA.md#q2-在-gpu-上运行单精度-sgemm-与半精度-hgemm-矩阵乘法在显存消耗计算速度以及精度误差上有什么实际差距附实验数据)
+  * [Q3: 什么是 cuBLASLt 和 cuBLASXt？它们与普通的 cuBLAS 有什么区别和优势？](./06_CUDA_APIs/QA.md#q3-什么是-cublaslt-和-cublasxt它们与普通的-cublas-有什么区别和优势)

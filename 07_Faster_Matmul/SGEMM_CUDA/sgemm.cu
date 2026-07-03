@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <runner.cuh>
+#include <string>
 #include <vector>
 
 #define cudaCheck(err) (cudaCheck(err, __FILE__, __LINE__))
@@ -140,7 +141,7 @@ int main(int argc, char **argv) {
     cudaEventElapsedTime(&elapsed_time, beg, end);
     elapsed_time /= 1000.; // Convert to seconds
 
-    long flops = 2 * m * n * k;
+    long long flops = 2LL * m * n * k;
     printf(
         "Average elapsed time: (%7.6f) s, performance: (%7.1f) GFLOPS. size: "
         "(%ld).\n",

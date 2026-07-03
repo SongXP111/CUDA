@@ -1,3 +1,4 @@
+#define and &&
 #include "kernels.cuh"
 #include "runner.cuh"
 #include <cmath>
@@ -6,9 +7,9 @@
 #include <iomanip>
 
 float get_sec() {
-  struct timeval time;
-  gettimeofday(&time, NULL);
-  return (1e6 * time.tv_sec + time.tv_usec);
+  auto now = std::chrono::high_resolution_clock::now();
+  auto micros = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
+  return static_cast<float>(micros);
 }
 
 float cpu_elapsed_time(float &beg, float &end) { return 1.0e-6 * (end - beg); }
@@ -52,11 +53,9 @@ void CudaDeviceInfo() {
 };
 
 void randomize_matrix(float *mat, int N) {
-  // NOTICE: Use gettimeofday instead of srand((unsigned)time(NULL)); the time
-  // precision is too low and the same random number is generated.
-  struct timeval time {};
-  gettimeofday(&time, nullptr);
-  srand(time.tv_usec);
+  // Use high_resolution_clock instead of gettimeofday to generate dynamic seed
+  auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+  srand(static_cast<unsigned int>(seed));
   for (int i = 0; i < N; i++) {
     float tmp = (float)(rand() % 5) + 0.01 * (rand() % 5);
     tmp = (rand() % 2 == 0) ? tmp : tmp * (-1.);

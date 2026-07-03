@@ -41,3 +41,29 @@
   Warp 内 the 线程应该共同横向扫过矩阵的行（即列索引与 `threadIdx.x` 相关），而不是纵向扫过列（这会导致跨行的大步长访存，无法合并）。
 * **法则 C：使用共享内存 (Shared Memory) 作为中转站**：
   当算法本身物理上要求非连续访问时（如矩阵转置），可以先以合并的方式将数据读入共享内存，在共享内存内重排（共享内存没有合并访问限制，仅有 Bank Conflict），再以合并的方式写回全局内存。
+
+---
+
+### 实验记录：RTX 5080 Laptop (Blackwell SM 12.0) 矩阵乘法性能测试
+
+在本地机器上编译运行该系列 Kernel 后（矩阵大小 4096x4096），各个优化阶段的性能数据如下：
+
+| Kernel | GFLOPs/s | 相对 cuBLAS 比例 |
+| :--- | ---: | ---: |
+| 0: cuBLAS (官方基准) | `18207.1` | 100.0% |
+| 1: Naive (朴素实现) | `313.2` | 1.7% |
+| 2: GMEM Coalescing (全局内存合并) | `1770.1` | 9.7% |
+| 3: SMEM Caching (共享内存缓存) | `2558.1` | 14.0% |
+| 4: 1D Blocktiling (一维分块平铺) | `7342.0` | 40.3% |
+| 5: 2D Blocktiling (二维分块平铺) | `12709.1` | 69.8% |
+| 6: Vectorized Mem Access (向量化访存) | `15608.5` | 85.7% |
+| 7: Avoid Bank Conflicts (Linearize) | `14759.9` | 81.1% |
+| 8: Avoid Bank Conflicts (Offset) | `11775.6` | 64.7% |
+| 9: Autotuning (参数自动调优) | `15839.3` | 87.0% |
+| 10: Warptiling (Warp 级平铺) | `17480.2` | 96.0% |
+| 11: Double Buffering (双缓冲) | *验证失败* | N/A |
+
+> **观察与分析**：
+> 1. **优化效果显著**：仅仅是从 Naive (1.7%) 优化到 2D Blocktiling (69.8%)，性能就飙升了 40 倍。而经过极致优化的 Kernel 10 (Warptiling) 达到了 17480 GFLOPS，逼近了官方闭源库 cuBLAS 的 96%！
+> 2. **新架构特性**：在 Blackwell 架构下，原代码的 Kernel 11 (Double Buffering) 出现了计算结果偏差导致验证失败，这可能与新架构下共享内存的同步机制或异步拷贝特性变化有关，需要进一步调试排查。
+

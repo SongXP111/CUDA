@@ -74,6 +74,9 @@
 
 * 🧮 **通用矩阵乘法 (GEMM) 优化**
   * [Q1: 什么是全局内存的合并访存 (Coalesced Memory Access)？它的底层硬件机理和优化法则是什么？](./07_Faster_Matmul/QA.md#q1-什么是全局内存的合并访存-coalesced-memory-access它的底层硬件机理和优化法则是什么)
-
-
-
+  * [Q2: 在这个 benchmark 里，我们是怎么从“内存受限”变成“计算受限”的？](./07_Faster_Matmul/QA.md#q2-在这个-benchmark-里我们是怎么从内存受限变成计算受限的)
+  * [Q3: 分块 (Blocktiling) 是什么？是 Shared Memory Tiling 吗？](./07_Faster_Matmul/QA.md#q3-分块-blocktiling-是什么是-shared-memory-tiling-吗)
+  * [Q4: 向量化访存 (Vectorized Mem Access, Kernel 6) 是什么？](./07_Faster_Matmul/QA.md#q4-向量化访存-vectorized-mem-access-kernel-6-是什么)
+  * [Q5: 双缓冲 (Double Buffering / 软件流水线) 是什么？](./07_Faster_Matmul/QA.md#q5-双缓冲-double-buffering--软件流水线-是什么)
+  * [Q6: 如何规避 Shared Memory 的 Bank Conflict（银行冲突）？](./07_Faster_Matmul/QA.md#q6-如何规避-shared-memory-的-bank-conflict银行冲突)
+  * [Q7: 解释一下 Thread Coarsening 与 Vectorization（线程粗化与向量化）](./07_Faster_Matmul/QA.md#q7-解释一下-thread-coarsening-与-vectorization线程粗化与向量化)

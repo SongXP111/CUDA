@@ -19,3 +19,6 @@ build/
 x64/
 Debug/
 Release/
+
+# External cloned repositories
+07_Faster_Matmul/SGEMM_CUDA/

@@ -62,6 +62,8 @@
   * [Q5: 什么是 Pointwise (点对点/逐元素) 算子？为什么它在 GPU 性能调优中如此重要？](./06_CUDA_APIs/QA.md#q5-什么是-pointwise-点对点逐元素-算子为什么它在-gpu-性能调优中如此重要)
   * [Q6: cuDNN Graph API 是如何通过运行时即时编译 (JIT) 实现算子融合并让数据在寄存器中流转的？](./06_CUDA_APIs/QA.md#q6-cudnn-graph-api-是如何通过运行时即时编译-jit-实现算子融合并让数据在寄存器中流转的)
   * [Q7: 什么是 NCHW 与 NHWC 数据排布格式？为什么在 GPU 性能调优中更推荐使用 NHWC (Channels-Last)？](./06_CUDA_APIs/QA.md#q7-什么是-nchw-与-nhwc-数据排布格式为什么在-gpu-性能调优中更推荐使用-nhwc-channels-last)
+* 🏢 **集群与多卡数据中心计算**
+  * [Q8: 什么是 cuBLASmp、NCCL 和 MIG？在大型集群或多卡数据中心中，它们各自扮演着什么角色？](./06_CUDA_APIs/QA.md#q8-什么是-cublasmp-nccl-和-mig在大型集群或多卡数据中心中它们各自扮演着什么角色)
 
 
 

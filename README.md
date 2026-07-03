@@ -10,6 +10,7 @@
 | :--- | :--- | :--- |
 | **第五章** | `05_Writing_your_First_Kernels/` | CUDA 基础、核函数编写、Profiling 分析、原子操作、Streams |
 | **第六章** | `06_CUDA_APIs/` | cuBLAS、cuDNN、cuBLASmp 等官方加速库 |
+| **第七章** | `07_Faster_Matmul/` | 矩阵乘法（SGEMM）性能分阶优化与极致调优 |
 
 ---
 
@@ -64,6 +65,15 @@
   * [Q7: 什么是 NCHW 与 NHWC 数据排布格式？为什么在 GPU 性能调优中更推荐使用 NHWC (Channels-Last)？](./06_CUDA_APIs/QA.md#q7-什么是-nchw-与-nhwc-数据排布格式为什么在-gpu-性能调优中更推荐使用-nhwc-channels-last)
 * 🏢 **集群与多卡数据中心计算**
   * [Q8: 什么是 cuBLASmp、NCCL 和 MIG？在大型集群或多卡数据中心中，它们各自扮演着什么角色？](./06_CUDA_APIs/QA.md#q8-什么是-cublasmp-nccl-和-mig在大型集群或多卡数据中心中它们各自扮演着什么角色)
+
+---
+
+### 📙 第七章：优化矩阵乘法
+
+> 完整 Q&A 文档：[07_Faster_Matmul/QA.md](./07_Faster_Matmul/QA.md)
+
+* 🧮 **通用矩阵乘法 (GEMM) 优化**
+  * [Q1: 什么是全局内存的合并访存 (Coalesced Memory Access)？它的底层硬件机理和优化法则是什么？](./07_Faster_Matmul/QA.md#q1-什么是全局内存的合并访存-coalesced-memory-access它的底层硬件机理和优化法则是什么)
 
 
 

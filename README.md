@@ -74,16 +74,16 @@
 
 * 🧮 **通用矩阵乘法 (GEMM) 优化**
   * [Q1: 什么是全局内存的合并访存 (Coalesced Memory Access)？它的底层硬件机理和优化法则是什么？](./07_Faster_Matmul/QA.md#q1-什么是全局内存的合并访存-coalesced-memory-access它的底层硬件机理和优化法则是什么)
-  * [Q2: 在这个 benchmark 里，我们是怎么从“内存受限”变成“计算受限”的？](./07_Faster_Matmul/QA.md#q2-在这个-benchmark-里我们是怎么从内存受限变成计算受限的)
-  * [Q3: 分块 (Blocktiling) 是什么？是 Shared Memory Tiling 吗？](./07_Faster_Matmul/QA.md#q3-分块-blocktiling-是什么是-shared-memory-tiling-吗)
-  * [Q4: 向量化访存 (Vectorized Mem Access, Kernel 6) 是什么？](./07_Faster_Matmul/QA.md#q4-向量化访存-vectorized-mem-access-kernel-6-是什么)
-  * [Q5: 双缓冲 (Double Buffering / 软件流水线) 是什么？](./07_Faster_Matmul/QA.md#q5-双缓冲-double-buffering--软件流水线-是什么)
-  * [Q6: 如何规避 Shared Memory 的 Bank Conflict（银行冲突）？](./07_Faster_Matmul/QA.md#q6-如何规避-shared-memory-的-bank-conflict银行冲突)
-  * [Q7: 解释一下 Thread Coarsening 与 Vectorization（线程粗化与向量化）](./07_Faster_Matmul/QA.md#q7-解释一下-thread-coarsening-与-vectorization线程粗化与向量化)
-  * [Q8: Shared Memory（共享内存）数组是怎么定义和同步的？](./07_Faster_Matmul/QA.md#q8-shared-memory共享内存数组是怎么定义和同步的)
-  * [Q9: 什么是 Roofline Model（屋顶线模型）？如何用它判断 Kernel 的性能瓶颈？](./07_Faster_Matmul/QA.md#q9-什么是-roofline-model屋顶线模型如何用它判断-kernel-的性能瓶颈)
-  * [Q10: 什么是 Occupancy（占用率）？它和性能是什么关系？](./07_Faster_Matmul/QA.md#q10-什么是-occupancy占用率它和性能是什么关系)
-  * [Q11: 循环展开 (#pragma unroll) 的作用和原理是什么？](./07_Faster_Matmul/QA.md#q11-循环展开-pragma-unroll-的作用和原理是什么)
+  * [Q2: 什么是 Roofline Model（屋顶线模型）？如何用它判断 Kernel 的性能瓶颈？](./07_Faster_Matmul/QA.md#q2-什么是-roofline-model屋顶线模型如何用它判断-kernel-的性能瓶颈)
+  * [Q3: 什么是 Occupancy（占用率）？它和性能是什么关系？](./07_Faster_Matmul/QA.md#q3-什么是-occupancy占用率它和性能是什么关系)
+  * [Q4: Shared Memory（共享内存）数组是怎么定义和同步的？](./07_Faster_Matmul/QA.md#q4-shared-memory共享内存数组是怎么定义和同步的)
+  * [Q5: 在这个 benchmark 里，我们是怎么从“内存受限”变成“计算受限”的？](./07_Faster_Matmul/QA.md#q5-在这个-benchmark-里我们是怎么从内存受限变成计算受限的)
+  * [Q6: 分块 (Blocktiling) 是什么？是 Shared Memory Tiling 吗？](./07_Faster_Matmul/QA.md#q6-分块-blocktiling-是什么是-shared-memory-tiling-吗)
+  * [Q7: 如何规避 Shared Memory 的 Bank Conflict（银行冲突）？](./07_Faster_Matmul/QA.md#q7-如何规避-shared-memory-的-bank-conflict银行冲突)
+  * [Q8: 解释一下 Thread Coarsening 与 Vectorization（线程粗化与向量化）](./07_Faster_Matmul/QA.md#q8-解释一下-thread-coarsening-与-vectorization线程粗化与向量化)
+  * [Q9: 向量化访存 (Vectorized Mem Access, Kernel 6) 是什么？](./07_Faster_Matmul/QA.md#q9-向量化访存-vectorized-mem-access-kernel-6-是什么)
+  * [Q10: 循环展开 (#pragma unroll) 的作用和原理是什么？](./07_Faster_Matmul/QA.md#q10-循环展开-#pragma-unroll-的作用和原理是什么)
+  * [Q11: 双缓冲 (Double Buffering / 软件流水线) 是什么？](./07_Faster_Matmul/QA.md#q11-双缓冲-double-buffering-/-软件流水线-是什么)
   * [Q12: 如何使用 Nsight Compute (ncu) 对 CUDA Kernel 进行性能分析？](./07_Faster_Matmul/QA.md#q12-如何使用-nsight-compute-ncu-对-cuda-kernel-进行性能分析)
 
 

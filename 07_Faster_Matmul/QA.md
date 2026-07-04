@@ -9,23 +9,22 @@
 以下问题按推荐的学习顺序排列，分为三个阶段：
 
 #### 第一阶段：基础概念（优化之前必须理解的底层原理）
-- [Q1: 什么是全局内存的合并访存 (Coalesced Memory Access)？](#q1-什么是全局内存的合并访存-coalesced-memory-access它的底层硬件机理和优化法则是什么)
-- [Q9: 什么是 Roofline Model（屋顶线模型）？如何用它判断 Kernel 的性能瓶颈？](#q9-什么是-roofline-model屋顶线模型如何用它判断-kernel-的性能瓶颈)
-- [Q10: 什么是 Occupancy（占用率）？它和性能是什么关系？](#q10-什么是-occupancy占用率它和性能是什么关系)
-- [Q8: Shared Memory（共享内存）数组是怎么定义和同步的？](#q8-shared-memory共享内存数组是怎么定义和同步的)
+- [Q1: 什么是全局内存的合并访存 (Coalesced Memory Access)？它的底层硬件机理和优化法则是什么？](#q1-什么是全局内存的合并访存-coalesced-memory-access它的底层硬件机理和优化法则是什么)
+- [Q2: 什么是 Roofline Model（屋顶线模型）？如何用它判断 Kernel 的性能瓶颈？](#q2-什么是-roofline-model屋顶线模型如何用它判断-kernel-的性能瓶颈)
+- [Q3: 什么是 Occupancy（占用率）？它和性能是什么关系？](#q3-什么是-occupancy占用率它和性能是什么关系)
+- [Q4: Shared Memory（共享内存）数组是怎么定义和同步的？](#q4-shared-memory共享内存数组是怎么定义和同步的)
 
 #### 第二阶段：优化主线（从 Naive 到接近 cuBLAS 的完整链路）
-- [Q2: 在这个 benchmark 里，我们是怎么从"内存受限"变成"计算受限"的？](#q2-在这个-benchmark-里我们是怎么从内存受限变成计算受限的)
-- [Q3: 分块 (Blocktiling) 是什么？是 Shared Memory Tiling 吗？](#q3-分块-blocktiling-是什么是-shared-memory-tiling-吗)
-- [Q6: 如何规避 Shared Memory 的 Bank Conflict（银行冲突）？](#q6-如何规避-shared-memory-的-bank-conflict银行冲突)
-- [Q7: 解释一下 Thread Coarsening 与 Vectorization（线程粗化与向量化）](#q7-解释一下-thread-coarsening-与-vectorization线程粗化与向量化)
-- [Q4: 向量化访存 (Vectorized Mem Access, Kernel 6) 是什么？](#q4-向量化访存-vectorized-mem-access-kernel-6-是什么)
-- [Q11: 循环展开 (#pragma unroll) 的作用和原理是什么？](#q11-循环展开-pragma-unroll-的作用和原理是什么)
-- [Q5: 双缓冲 (Double Buffering / 软件流水线) 是什么？](#q5-双缓冲-double-buffering--软件流水线-是什么)
+- [Q5: 在这个 benchmark 里，我们是怎么从“内存受限”变成“计算受限”的？](#q5-在这个-benchmark-里我们是怎么从内存受限变成计算受限的)
+- [Q6: 分块 (Blocktiling) 是什么？是 Shared Memory Tiling 吗？](#q6-分块-blocktiling-是什么是-shared-memory-tiling-吗)
+- [Q7: 如何规避 Shared Memory 的 Bank Conflict（银行冲突）？](#q7-如何规避-shared-memory-的-bank-conflict银行冲突)
+- [Q8: 解释一下 Thread Coarsening 与 Vectorization（线程粗化与向量化）](#q8-解释一下-thread-coarsening-与-vectorization线程粗化与向量化)
+- [Q9: 向量化访存 (Vectorized Mem Access, Kernel 6) 是什么？](#q9-向量化访存-vectorized-mem-access-kernel-6-是什么)
+- [Q10: 循环展开 (#pragma unroll) 的作用和原理是什么？](#q10-循环展开-#pragma-unroll-的作用和原理是什么)
+- [Q11: 双缓冲 (Double Buffering / 软件流水线) 是什么？](#q11-双缓冲-double-buffering-/-软件流水线-是什么)
 
 #### 第三阶段：性能分析（定位瓶颈、验证优化效果）
 - [Q12: 如何使用 Nsight Compute (ncu) 对 CUDA Kernel 进行性能分析？](#q12-如何使用-nsight-compute-ncu-对-cuda-kernel-进行性能分析)
-
 
 ---
 
@@ -65,9 +64,177 @@
 #### 4. 补充：L1/L2 Cache 的角色
 在现代 GPU（如 Ampere 及之后的架构）中，全局内存访问实际上会先查询 **L1 Cache**（SM 内部的 Texture/Data Cache）和 **L2 Cache**（全局共享的大容量缓存）。合并访存的优势不仅在于减少物理传输事务的次数，还在于让连续访问更容易命中 Cache Line（通常为 128 字节），从而避免反复从 DRAM 取数据。非合并的分散访问会导致每个线程的请求触及不同的 Cache Line，大幅降低缓存命中率。
 
+
 ---
 
-### Q2: 在这个 benchmark 里，我们是怎么从“内存受限”变成“计算受限”的？
+### Q2: 什么是 Roofline Model（屋顶线模型）？如何用它判断 Kernel 的性能瓶颈？
+
+**Roofline Model（屋顶线模型）** 是分析 GPU/CPU 程序性能瓶颈的标准框架。它通过一张图，直观地告诉你：**你的 Kernel 当前是被"算力"还是被"带宽"卡住了，以及离硬件极限还有多远。**
+
+#### 1. 核心概念
+
+Roofline 模型基于两个关键指标：
+
+* **算术强度 (Arithmetic Intensity, AI)**：每从内存搬运 1 字节数据，能够执行多少次浮点运算。单位为 **FLOPs/Byte**。
+  ```
+  AI = 总浮点运算次数 (FLOPs) / 总内存传输字节数 (Bytes)
+  ```
+* **可达性能上限 (Attainable Performance)**：硬件在给定算术强度下能够提供的最大 FLOPS。
+
+#### 2. "屋顶"长什么样？
+
+Roofline 图的 X 轴是算术强度 (FLOPs/Byte)，Y 轴是性能 (GFLOPs/s)：
+
+```
+性能 (GFLOPS/s)
+     │              ╱‾‾‾‾‾‾‾‾‾‾‾‾‾  ← 算力天花板 (Peak Compute)
+     │            ╱
+     │          ╱
+     │        ╱  ← 带宽斜坡 (Memory Bandwidth)
+     │      ╱
+     │    ╱
+     │  ╱
+     │╱
+     └──────────────────────────── 算术强度 (FLOPs/Byte)
+              ↑
+         拐点 (Ridge Point)
+```
+
+* **左侧斜坡区**（算术强度低）：性能被**显存带宽**限制，称为 **Memory-Bound（内存受限）**。无论计算单元多强，数据搬不上来就白搭。
+* **右侧平顶区**（算术强度高）：性能被**计算单元峰值**限制，称为 **Compute-Bound（计算受限）**。数据已经足够快地喂到计算单元。
+* **拐点 (Ridge Point)**：两条线的交汇处。算术强度恰好让带宽和算力同时满载。
+
+#### 3. 如何使用 Roofline 分析 SGEMM
+
+以本仓库的 SGEMM 优化为例：
+
+| 阶段 | 算术强度 (AI) | 瓶颈区域 | 优化方向 |
+|:---|:---|:---|:---|
+| Naive (Kernel 1) | ~0.25 FLOPs/Byte | 深度 Memory-Bound | 提升数据复用 |
+| SMEM Tiling (Kernel 3-5) | ~32 FLOPs/Byte | 越过拐点，进入 Compute-Bound | 优化指令效率 |
+| Warptiling (Kernel 10) | ~32 FLOPs/Byte | 贴近算力天花板 | 榨干 ALU 利用率 |
+
+#### 4. Nsight Compute 的 Roofline 视图
+
+在 NVIDIA Nsight Compute 中，可以直接生成 Roofline 图：
+```bash
+ncu --set full -o profile_output ./sgemm <kernel_number>
+```
+然后在 Nsight Compute GUI 中打开 `profile_output.ncu-rep`，切换到 **Roofline** 标签页，即可看到你的 Kernel 在图上的位置（一个点），以及它距离屋顶线（硬件极限）的差距。
+
+
+---
+
+### Q3: 什么是 Occupancy（占用率）？它和性能是什么关系？
+
+**Occupancy（占用率）** 是 GPU 性能调优中的核心资源指标，定义为：
+
+> **Occupancy = SM 上活跃的 Warp 数量 / SM 最大可支持的 Warp 数量**
+
+例如，如果一个 SM 最多支持 64 个 Warp，而你的 Kernel 只激活了 32 个，那么 Occupancy 就是 50%。
+
+#### 1. 三大资源约束
+
+SM 能同时调度多少个 Block，受以下三个物理资源的**最短板**限制：
+
+* **寄存器数量 (Registers per SM)**：
+  每个线程使用的寄存器越多，能同时运行的线程就越少。例如 SM 有 65536 个寄存器，每线程用 64 个，则最多只能有 `65536 / 64 = 1024` 个线程 = 32 个 Warp。
+* **共享内存容量 (Shared Memory per SM)**：
+  每个 Block 使用的 SMEM 越多，SM 能放下的 Block 就越少。例如 SM 有 48KB SMEM，每个 Block 用 32KB，则最多只能容纳 1 个 Block。
+* **每个 SM 的最大 Block/Warp 数量**：
+  硬件限制了每个 SM 最多有多少个 Block（如 32 个）和 Warp（如 64 个），即使寄存器和 SMEM 还有余量。
+
+#### 2. Occupancy 和性能的关系：并不是越高越好！
+
+这是一个常见误区。更高的 Occupancy **不一定**意味着更好的性能：
+
+* **高 Occupancy 的优势**：更多 Warp 意味着调度器有更多的候选 Warp 来**隐藏访存延迟**。当一个 Warp 在等待数据时，调度器可以切换到其他就绪的 Warp 继续执行。
+* **低 Occupancy 的优势**：如果我们降低 Occupancy（比如通过增大每线程的分块大小 TM×TN），每个线程可以使用**更多寄存器**来缓存数据，从而减少对 SMEM 和全局内存的访问。这在计算受限的场景下反而更快。
+
+在本仓库的 SGEMM 中，Kernel 5 (2D Blocktiling) 使用了 `__launch_bounds__` 来限制每个 Block 的线程数，主动降低了 Occupancy，但因为更高的寄存器复用率，性能反而更好。
+
+#### 3. 如何计算和优化 Occupancy
+
+* **CUDA Occupancy Calculator**：NVIDIA 提供了 [Excel 表格工具](https://developer.nvidia.com/cuda-occupancy-calculator) 或使用 API `cudaOccupancyMaxActiveBlocksPerMultiprocessor()` 在运行时计算。
+* **`__launch_bounds__` 指令**：在核函数声明时使用，告知编译器每个 Block 的最大线程数和期望的最小 Block 数，帮助编译器优化寄存器分配。
+  ```cuda
+  __global__ void __launch_bounds__(256, 1) myKernel(...) { ... }
+  // 256: 每个Block最多256线程；1: 每个SM至少1个Block
+  ```
+* **开发建议**：先以合理的 Occupancy（50%~75%）为起点，再根据 Profiling 结果决定是否需要牺牲 Occupancy 换取更多寄存器复用。
+
+
+---
+
+### Q4: Shared Memory（共享内存）数组是怎么定义和同步的？
+
+共享内存（Shared Memory）是位于 SM（Streaming Multiprocessor）内部的高速片上缓存，访问延迟极低，主要用于同一个线程块（Thread Block）内部的数据复用与线程协作。
+
+#### 1. 共享内存数组的定义方式
+
+主要有两种定义方式：**静态分配**与**动态分配**。
+
+* **静态分配（Static Allocation）**：
+  在编译时就必须确定数组的大小。直接在核函数内使用 `__shared__` 修饰符声明即可。
+  ```cuda
+  template <const int BM, const int BN, const int BK>
+  __global__ void sgemmKernel(...) {
+      // 编译时通过模板参数确定 As 和 Bs 的大小
+      __shared__ float As[BM * BK];
+      __shared__ float Bs[BK * BN];
+  }
+  ```
+* **动态分配（Dynamic Allocation）**：
+  在运行时根据输入参数动态指定大小。使用 `extern __shared__` 关键字声明，且数组大小留空。在 Host 端启动 Kernel 时，通过三括号 `<<<...>>>` 的**第三个参数**传入分配的共享内存字节数（Bytes）。
+  ```cuda
+  // Kernel 内部声明
+  __global__ void myKernel(float *d_in) {
+      extern __shared__ float s_array[]; // 动态共享内存入口地址
+      int tid = threadIdx.x;
+      s_array[tid] = d_in[tid];
+  }
+
+  // Host 端调用（分配 threadsPerBlock 个 float 的空间）
+  int sharedMemBytes = threadsPerBlock * sizeof(float);
+  myKernel<<<gridSize, threadsPerBlock, sharedMemBytes>>>(d_in);
+  ```
+  *(注：如果同一个 Kernel 内动态声明多个不同类型的数组，它们会共享同一个起始地址，需通过指针偏移手动切分。)*
+
+#### 2. 共享内存数组的同步机制
+
+由于共享内存在同一个 Block 内的所有线程之间是共享的，并发读写同一块地址会带来**数据竞争**，因此必须引入同步。
+
+* **块级同步：`__syncthreads()`**：
+  最核心的同步屏障。执行到这一步的线程会暂停，直到**该 Block 内的所有线程**都到达该点。它同时保证了之前的所有内存读写对块内所有线程皆可见。
+  典型的**“加载-同步-计算-同步”**模式（以本项目 `5_kernel_2D_blocktiling.cuh` 为例）：
+  ```cuda
+  // 1. 各个线程协作把数据从全局内存加载到 As 和 Bs
+  As[(innerRowA + loadOffset) * BK + innerColA] = A[...];
+  Bs[(innerRowB + loadOffset) * BN + innerColB] = B[...];
+  
+  // 2. 必须同步，确保 As 和 Bs 已全部写入完成，防止慢线程读取到垃圾数据
+  __syncthreads(); 
+  
+  // 3. 各线程计算/消费 As 和 Bs 中的数据
+  for (uint dotIdx = 0; dotIdx < BK; ++dotIdx) {
+      sum += regM[i] * regN[j];
+  }
+  
+  // 4. 再次同步，确保所有线程都计算完毕，防止下一轮循环的加载过早覆盖当前数据
+  __syncthreads();
+  ```
+  > [!WARNING]
+  > `__syncthreads()` 不能放在包含分支分化（如 `if-else`）的分支内部，除非所有线程都必然会进入该分支，否则会导致死锁。
+
+* **Warp 级同步：`__syncwarp(mask)`**：
+  若仅需要 Warp（32个线程）内部协作，可使用更轻量的 `__syncwarp()` 仅同步 Warp 内指定掩码的线程，开销远小于 `__syncthreads()`。此外，将指针声明为 `volatile` 可强制每次读写都直达共享内存而绕过寄存器缓存。
+
+* **异步拷贝同步（Ampere 及以上）**：
+  现代架构提供了异步拷贝指令（如 `cp.async`），配合屏障（`cuda::barrier`）或协作组，在数据从全局内存异步拷入共享内存的过程中，允许计算单元同时并行计算，隐藏访存延迟。
+
+---
+
+### Q5: 在这个 benchmark 里，我们是怎么从“内存受限”变成“计算受限”的？
 
 在这个 Benchmark 的演进中，核心手段是**利用共享内存 (Shared Memory) 和分块 (Tiling) 技术，大幅提高数据的复用率**。我们可以将这个过程拆解为以下几个关键阶段：
 
@@ -101,9 +268,10 @@
 
 **总结**：从内存受限到计算受限的转折点发生在 **Kernel 3 到 Kernel 5 的分块阶段**。在此之前，我们在和总线带宽做斗争；在此之后，我们在和指令调度、流水线延迟与寄存器数量做斗争。
 
+
 ---
 
-### Q3: 分块 (Blocktiling) 是什么？是 Shared Memory Tiling 吗？
+### Q6: 分块 (Blocktiling) 是什么？是 Shared Memory Tiling 吗？
 
 简单来说，**是的，Blocktiling（块级平铺/分块）在物理层面上就是 Shared Memory Tiling（共享内存分块）**。
 
@@ -130,9 +298,152 @@
 * **介质**：**寄存器 + 共享内存 + 寄存器（双层结构）**。
 * **做法**：介于 Blocktiling 和 Threadtiling 之间。在更高级的优化中（如 Tensor Core 编程），我们不直接给单个线程分块，而是先将 Blocktiling 的大块拆分给不同的 Warp（Warp 级分块），Warp 内部再进行线程级分块。这能够有效利用 Warp 内部的洗牌指令 (Shuffle) 提升效率。
 
+
 ---
 
-### Q4: 向量化访存 (Vectorized Mem Access, Kernel 6) 是什么？
+### Q7: 如何规避 Shared Memory 的 Bank Conflict（银行冲突）？
+
+在 CUDA 编程中，**Bank Conflict（银行冲突 / 存储体冲突）** 是影响共享内存 (Shared Memory, SMEM) 访问性能的最常见瓶颈。
+
+在当前 `SGEMM_CUDA` 的 Benchmark 中，主要采用了**两种**经典的方案来规避它：**Padding（填充列）** 和 **Swizzling（重排/对角线化线性映射）**。
+
+---
+
+#### 1. 什么是 Bank Conflict？
+
+在硬件层面，共享内存被均分为 **32 个同样大小的、可独立访问的内存模块**，称为 **Banks（存储体）**。
+* **物理规则**：在一个 Warp（32个线程）中，如果多个线程**同时访问同一个 Bank 中的不同地址**，这些访问就无法并发执行，必须被串行化（排队），这就发生了 **Bank Conflict**。
+* **无冲突情况**：
+  * 32 个线程访问 32 个**不同**的 Banks（完美并行）。
+  * 32 个线程同时访问同一个 Bank 的**同一个**地址（触发**广播/Broadcast**机制，无冲突且极快）。
+
+---
+
+#### 2. 规避方案 A：Padding（填充列） —— 最常用、最简单 (对应 Kernel 8)
+
+在 `8_kernel_bank_extra_col.cuh` 中采用的就是这种方案。
+
+##### 💡 原理：
+共享内存中，连续的 4 字节（一个 float）依次映射到 Bank 0, 1, 2, …, 31, 0, 1, 2, … 如此循环。如果我们的矩阵分块宽度是 `BN = 128`，因为 128 是 32 的整数倍，**每行末尾恰好落在 Bank 31，下一行的首元素又回到了 Bank 0**。这意味着所有行的第 j 列元素都落在同一个 Bank 上（比如第 0 行首元素在 Bank 0，第 1 行首元素也在 Bank 0，第 2 行首元素还是 Bank 0...）。当不同的线程同时访问不同行的同一列时，它们计算出的索引对应的 Bank 就会产生冲突。
+
+**Padding 的做法是：在每一行的末尾塞入多余的“填充列 (Extra Columns)”。**
+
+##### 🛠️ 代码实现：
+```cuda
+// 1. 申请共享内存时，每行额外多申请 5 列（一般取奇数，如 1 或者是 5 等）
+const int extraCols = 5;
+__shared__ float Bs[BK * (BN + extraCols)]; // 原本是 BK * BN
+
+// 2. 读写索引都加上这个偏移量
+Bs[innerRowB * (BN + extraCols) + innerColB * 4 + 0] = tmp.x;
+...
+regN[i] = Bs[dotIdx * (BN + extraCols) + threadCol * TN + i];
+```
+
+##### ⚡ 效果：
+通过将一行的物理宽度从 `128` 强行变成 `133`（128 + 5），第二行的首元素就会从原先的 Bank 0 错位移动到 Bank 5，第三行的首元素移动到 Bank 10。
+这样，**原本垂直对齐、映射到同一个 Bank 的数据在物理上被错开分摊到了不同的 Banks 中**，以极小的空间开销避开了冲突。
+
+---
+
+#### 3. 规避方案 B：Swizzling（地址重排） (对应 Kernel 7)
+
+在 `7_kernel_resolve_bank_conflicts.cuh` 中使用的是这种方案。
+
+##### 💡 原理：
+Padding 虽然简单，但它会**浪费一部分共享内存空间**（本例中浪费了 5/128 约为 4% 的共享内存），这在共享内存极度紧张的核函数中可能会降低 Occupancy（占用率）。
+
+**Swizzling（重排）通过修改读写索引的数学映射公式，不浪费任何内存空间，直接在逻辑上打乱访存模式，使线程访问均匀分散到 32 个 Banks 中。**
+
+可以把 Swizzling 想象成将原本“按行顺序”排列的二维数组，重新“洗牌”成一种类似**对角线交错**的排列方式。这样，原本同一列（映射到同一个 Bank）的元素，在物理上被分散到不同的 Bank 上——类似于把整齐排列的棋盘格旋转了一个角度。
+
+##### 🛠️ 代码实现：
+通过位操作或巧妙的取模运算重新映射索引：
+```cuda
+// 写入共享内存时，将原本线性的 innerColB 重新编排映射
+Bs[((innerColB % 2) * 4 + innerRowB * 8 + 0) * 16 + innerColB / 2] = tmp.x;
+...
+
+// 读取时也使用重新计算的索引
+regN[i] = Bs[(dotIdx * 8 + i) * 16 + threadCol];
+```
+*(通过逻辑上将一维索引进行变换，让相邻线程在访问相邻数据时，物理地址映射到不同的 Bank 线上。)*
+
+##### ⚡ 效果：
+* 优点：**零内存浪费**。
+* 缺点：索引计算公式变得非常复杂，增加了一些整数运算指令开销，可读性变差。
+
+---
+
+#### 4. 开发建议
+
+1. **优先使用 Padding**：因为它极其直观，开发和调试成本低。通常只需要将二维共享内存的列宽设置为 `Width + 1`，就能以极小的空间代价干掉大部分 Bank 冲突。
+2. **在高级库（如 CUTLASS）中使用 Swizzling**：当性能压榨到极致，且共享内存容量成为 Occupancy 的瓶颈时，会通过底层宏和 Swizzle 模板类实现复杂的无损重排。
+
+
+---
+
+### Q8: 解释一下 Thread Coarsening 与 Vectorization（线程粗化与向量化）
+
+**线程粗化 (Thread Coarsening)** 与 **向量化 (Vectorization)** 是 GPU 高性能计算（特别是 CUDA 矩阵乘法）中非常核心且经常结合使用的两种优化技术。
+
+简单来说：
+* **线程粗化** 改变的是**“每个线程分配的工作量大小”**（即合并多个线程的任务，提高寄存器数据复用，减少冗余开销）。
+* **向量化** 改变的是**“单条指令处理的数据宽度”**（即一次指令读写/计算多个数据，榨干硬件带宽和指令发射槽）。
+
+---
+
+#### 1. 线程粗化 (Thread Coarsening)
+
+##### 💡 核心概念：
+在最原始的 GPU 编程思维中，我们倾向于“一个线程只计算一个输出元素”（比如 Naive 矩阵乘法，每个线程只算 C[i][j] 的 1 个 float）。
+**线程粗化**则是反其道而行之：**将本该由多个线程完成的工作，合并交给同一个线程来串行完成。**
+
+在本仓库中，线程粗化的演进分为两步：
+* **Kernel 4 (1D Blocktiling)**：每线程只在 M 维度扩展，负责计算 TM 个元素（1D 粗化）。这是粗化的第一步，已经带来了显著的 A 矩阵数据复用。
+* **Kernel 5 (2D Blocktiling)**：进一步在 M 和 N 两个维度同时扩展，每线程负责 TM×TN 个元素（2D 粗化），获得更高的 A 和 B 的双向数据复用率。
+
+##### ⚡ 为什么粗化反而更快？
+虽然 GPU 拥有极强的并行度，但如果划分得太细，会带来很多副作用。线程粗化的优势在于：
+* **减少冗余访存（数据复用）**：在矩阵乘法中，计算 C[i][j] 和 C[i][j+1] 都需要读取 A 矩阵的第 i 行。如果分配给两个线程，它们会各自从 Shared Memory 读取相同的 A 元素。如果**粗化**为一个线程计算 C 的一个 TM 乘 TN 微型块（即 **Threadtiling / Register Tiling**），该线程只需要将 A 的元素读入寄存器一次，就可以用来跟 B 的多列进行乘加。这大幅减少了对共享内存的访问次数。
+* **减少线程同步（Barrier Reduction）**：合并了线程后，线程块（Thread Block）内的活跃线程数变少，从而减少了 __syncthreads() 的等待和同步开销。
+* **减少线程创建与调度开销**。
+
+##### ⚠️ 缺点/代价：
+* **消耗更多寄存器**：粗化线程意味着该线程需要在寄存器中暂存更多中间结果（如 TM 乘 TN 个累加值）。如果粗化度过大，会导致**寄存器溢出 (Register Spilling)** 到慢速内存，或者降低 GPU 的 Block 占用率 (Occupancy)。
+
+---
+
+#### 2. 向量化 (Vectorization)
+
+##### 💡 核心概念：
+**向量化**是指利用硬件的 SIMD（单指令多数据）或宽内存总线特性，**用一条指令同时处理多个相邻的数据元素**。
+
+##### 🛠️ 在 CUDA 中的分类：
+* **访存向量化 (Memory Vectorization)**：使用 CUDA 内置的向量数据类型（如 float4、double2、int4）。比如用一条 float4 加载指令（128位宽）代替四条传统的 float 加载指令（32位宽）。其优势在于**指令数减少 75%**，极大缓解了 GPU 的指令发射瓶颈，并提升了总线利用效率。
+* **计算向量化 (Arithmetic Vectorization)**：利用特定的硬件指令同时计算多个数据。比如使用 half2（一次指令同时对两个半精度浮点数做乘加），或者 DP4A（八位整数点积指令）。
+
+---
+
+#### 3. 它们之间的区别与协同关系
+
+| 维度 | 线程粗化 (Thread Coarsening) | 向量化 (Vectorization) |
+| :--- | :--- | :--- |
+| **优化维度** | **线程/任务分配维度** (线程做的事情变多了) | **硬件/指令宽度维度** (单条指令变宽了) |
+| **主要目标** | 提高数据复用（寄存器），减少共享内存冗余访问 | 减少指令数量，填满硬件访存/计算位宽 |
+| **制约瓶颈** | 受限于**寄存器数量 (Registers)** | 受限于**内存对齐 (Alignment)** 和**硬件指令集** |
+
+##### 🤝 完美协同（以本仓库的 Kernel 6 为例）：
+在高性能 CUDA SGEMM 中，这两者通常是结合在一起使用的：
+1. 我们首先进行 **Thread Coarsening**：让一个线程负责计算 C 的 TM 乘 TN（如 8 乘 8）的微型块。这个线程会把 A 的 8 个元素和 B 的 8 个元素暂存在寄存器中进行复用。
+2. 随后我们使用 **Vectorization**：
+   * **读取时**，由于线程粗化需要一次性读取多个数据，我们不使用单 float 读取，而是用 float4 向量化读取，一次搬运 4 个元素。
+   * **写回时**，计算完的 64 个 C 元素，我们也是通过强转为 float4，以 128 位向量化写回全局内存。
+
+
+---
+
+### Q9: 向量化访存 (Vectorized Mem Access, Kernel 6) 是什么？
 
 **向量化访存 (Vectorized Memory Access)** 是 CUDA 编程中非常重要的底层性能优化手段。
 
@@ -187,9 +498,79 @@ reinterpret_cast<float4 *>(&Bs[innerRowB * BN + innerColB * 4])[0] =
   * 矩阵的维度（如宽度 K 和 N）必须是 4 的整数倍。
   * 线程块分配的数据量（如 `BM * BK` 和 `BN * BK`）必须能被 `4 * 线程数` 整除，否则多出来的零散数据无法凑成 `float4` 就会导致编译或运行报错。这也是为什么我们在 `runner.cu` 中会看到各种针对向量化对齐的静态断言检查。
 
+
 ---
 
-### Q5: 双缓冲 (Double Buffering / 软件流水线) 是什么？
+### Q10: 循环展开 (#pragma unroll) 的作用和原理是什么？
+
+**循环展开 (Loop Unrolling)** 是将循环体复制多份以减少循环控制开销的编译器优化技术。在 CUDA 编程中，它通过 `#pragma unroll` 指令显式控制。
+
+#### 1. 为什么循环展开能提升性能？
+
+一个普通的 `for` 循环，每次迭代都伴随着：
+* **比较指令**：判断 `j < LOOP_COUNT` 是否成立。
+* **自增指令**：`j++`。
+* **跳转指令**：跳回循环头部。
+
+这些**循环控制指令不产生任何有用的计算**，却占用了宝贵的指令发射槽。展开后，这些开销被大幅消除：
+
+```cuda
+// 展开前：每次迭代都有 比较 + 自增 + 跳转 开销
+for (int j = 0; j < 4; j++) {
+    sum += a[tid] + b[tid];
+}
+
+// 展开后：没有循环控制开销，GPU 可以连续发射计算指令
+sum += a[tid] + b[tid];
+sum += a[tid] + b[tid];
+sum += a[tid] + b[tid];
+sum += a[tid] + b[tid];
+```
+
+展开带来的三个核心好处：
+* **减少分支指令**：消除了循环的比较和跳转，GPU 不需要处理 Warp 可能的分支分歧。
+* **增加指令级并行 (ILP)**：展开后多条独立指令暴露出来，GPU 的流水线可以同时处理更多操作。
+* **寄存器复用机会**：编译器在展开后能看到更大的代码窗口，更好地进行寄存器分配和常量折叠优化。
+
+#### 2. 在 CUDA 中如何使用
+
+* **完全展开**：当循环次数是编译时常量时，使用 `#pragma unroll` 让编译器将循环完全展开。
+  ```cuda
+  #pragma unroll
+  for (int i = 0; i < TM; ++i) {  // TM 是模板常量
+      regM[i] = As[dotIdx * BM + threadRow * TM + i];
+  }
+  ```
+* **部分展开**：指定展开因子，适用于循环次数较大的情况：
+  ```cuda
+  #pragma unroll 4  // 每次展开 4 次迭代
+  for (int j = 0; j < LOOP_COUNT; j++) { ... }
+  ```
+* **禁止展开**：在某些场景下展开反而有害（如增大代码体积导致指令缓存压力），可以使用 `#pragma unroll 1` 禁止展开。
+
+#### 3. 编译器自动展开 vs 手动声明
+
+在本仓库的 `unrolling_example.cu` 实验中发现，**即使不写 `#pragma unroll`，`nvcc` 编译器在很多情况下也会自动展开循环**（尤其是循环次数为编译时常量且循环体简单时）。
+
+可以通过查看 PTX 汇编来验证编译器是否进行了展开：
+```bash
+nvcc -ptx unrolling_example.cu -o - | less
+```
+如果在汇编中看不到循环的分支跳转指令（如 `@p bra`），说明编译器已经自动将循环展开了。
+
+#### 4. 在 SGEMM 中的应用
+
+在本仓库的矩阵乘法 Kernel 中，`#pragma unroll` 主要应用在以下关键内循环中：
+* **从 SMEM 加载到寄存器**的循环（`for i in TM / TN`）。
+* **内积计算**的循环（`for dotIdx in BK`）。
+* **写回结果到全局内存**的循环。
+
+这些循环的迭代次数都是模板常量，编译器可以完全展开，从而将内层计算变成一长串无分支的乘加指令流。
+
+
+---
+
+### Q11: 双缓冲 (Double Buffering / 软件流水线) 是什么？
 
 在 CUDA 矩阵乘法优化中，**双缓冲 (Double Buffering)**，也被称为**软件流水线 (Software Pipelining)**，是一种**用于隐藏全局内存（显存）访问延迟的经典并行优化技术**。
 
@@ -281,377 +662,6 @@ for (uint bkIdx = 0; bkIdx < K; bkIdx += 2 * BK) {
 
 *(注：在较新的 GPU 架构如 Ampere (SM 8.0) 及之后，NVIDIA 引入了硬件级的异步拷贝指令 `cp.async`，可以直接将数据从全局内存搬运至共享内存而不需要寄存器中转，这使得双缓冲可以在硬件层面更高效、更容易地实现。)*
 
----
-
-### Q6: 如何规避 Shared Memory 的 Bank Conflict（银行冲突）？
-
-在 CUDA 编程中，**Bank Conflict（银行冲突 / 存储体冲突）** 是影响共享内存 (Shared Memory, SMEM) 访问性能的最常见瓶颈。
-
-在当前 `SGEMM_CUDA` 的 Benchmark 中，主要采用了**两种**经典的方案来规避它：**Padding（填充列）** 和 **Swizzling（重排/对角线化线性映射）**。
-
----
-
-#### 1. 什么是 Bank Conflict？
-
-在硬件层面，共享内存被均分为 **32 个同样大小的、可独立访问的内存模块**，称为 **Banks（存储体）**。
-* **物理规则**：在一个 Warp（32个线程）中，如果多个线程**同时访问同一个 Bank 中的不同地址**，这些访问就无法并发执行，必须被串行化（排队），这就发生了 **Bank Conflict**。
-* **无冲突情况**：
-  * 32 个线程访问 32 个**不同**的 Banks（完美并行）。
-  * 32 个线程同时访问同一个 Bank 的**同一个**地址（触发**广播/Broadcast**机制，无冲突且极快）。
-
----
-
-#### 2. 规避方案 A：Padding（填充列） —— 最常用、最简单 (对应 Kernel 8)
-
-在 `8_kernel_bank_extra_col.cuh` 中采用的就是这种方案。
-
-##### 💡 原理：
-共享内存中，连续的 4 字节（一个 float）依次映射到 Bank 0, 1, 2, …, 31, 0, 1, 2, … 如此循环。如果我们的矩阵分块宽度是 `BN = 128`，因为 128 是 32 的整数倍，**每行末尾恰好落在 Bank 31，下一行的首元素又回到了 Bank 0**。这意味着所有行的第 j 列元素都落在同一个 Bank 上（比如第 0 行首元素在 Bank 0，第 1 行首元素也在 Bank 0，第 2 行首元素还是 Bank 0...）。当不同的线程同时访问不同行的同一列时，它们计算出的索引对应的 Bank 就会产生冲突。
-
-**Padding 的做法是：在每一行的末尾塞入多余的“填充列 (Extra Columns)”。**
-
-##### 🛠️ 代码实现：
-```cuda
-// 1. 申请共享内存时，每行额外多申请 5 列（一般取奇数，如 1 或者是 5 等）
-const int extraCols = 5;
-__shared__ float Bs[BK * (BN + extraCols)]; // 原本是 BK * BN
-
-// 2. 读写索引都加上这个偏移量
-Bs[innerRowB * (BN + extraCols) + innerColB * 4 + 0] = tmp.x;
-...
-regN[i] = Bs[dotIdx * (BN + extraCols) + threadCol * TN + i];
-```
-
-##### ⚡ 效果：
-通过将一行的物理宽度从 `128` 强行变成 `133`（128 + 5），第二行的首元素就会从原先的 Bank 0 错位移动到 Bank 5，第三行的首元素移动到 Bank 10。
-这样，**原本垂直对齐、映射到同一个 Bank 的数据在物理上被错开分摊到了不同的 Banks 中**，以极小的空间开销避开了冲突。
-
----
-
-#### 3. 规避方案 B：Swizzling（地址重排） (对应 Kernel 7)
-
-在 `7_kernel_resolve_bank_conflicts.cuh` 中使用的是这种方案。
-
-##### 💡 原理：
-Padding 虽然简单，但它会**浪费一部分共享内存空间**（本例中浪费了 5/128 约为 4% 的共享内存），这在共享内存极度紧张的核函数中可能会降低 Occupancy（占用率）。
-
-**Swizzling（重排）通过修改读写索引的数学映射公式，不浪费任何内存空间，直接在逻辑上打乱访存模式，使线程访问均匀分散到 32 个 Banks 中。**
-
-可以把 Swizzling 想象成将原本“按行顺序”排列的二维数组，重新“洗牌”成一种类似**对角线交错**的排列方式。这样，原本同一列（映射到同一个 Bank）的元素，在物理上被分散到不同的 Bank 上——类似于把整齐排列的棋盘格旋转了一个角度。
-
-##### 🛠️ 代码实现：
-通过位操作或巧妙的取模运算重新映射索引：
-```cuda
-// 写入共享内存时，将原本线性的 innerColB 重新编排映射
-Bs[((innerColB % 2) * 4 + innerRowB * 8 + 0) * 16 + innerColB / 2] = tmp.x;
-...
-
-// 读取时也使用重新计算的索引
-regN[i] = Bs[(dotIdx * 8 + i) * 16 + threadCol];
-```
-*(通过逻辑上将一维索引进行变换，让相邻线程在访问相邻数据时，物理地址映射到不同的 Bank 线上。)*
-
-##### ⚡ 效果：
-* 优点：**零内存浪费**。
-* 缺点：索引计算公式变得非常复杂，增加了一些整数运算指令开销，可读性变差。
-
----
-
-#### 4. 开发建议
-
-1. **优先使用 Padding**：因为它极其直观，开发和调试成本低。通常只需要将二维共享内存的列宽设置为 `Width + 1`，就能以极小的空间代价干掉大部分 Bank 冲突。
-2. **在高级库（如 CUTLASS）中使用 Swizzling**：当性能压榨到极致，且共享内存容量成为 Occupancy 的瓶颈时，会通过底层宏和 Swizzle 模板类实现复杂的无损重排。
-
----
-
-### Q7: 解释一下 Thread Coarsening 与 Vectorization（线程粗化与向量化）
-
-**线程粗化 (Thread Coarsening)** 与 **向量化 (Vectorization)** 是 GPU 高性能计算（特别是 CUDA 矩阵乘法）中非常核心且经常结合使用的两种优化技术。
-
-简单来说：
-* **线程粗化** 改变的是**“每个线程分配的工作量大小”**（即合并多个线程的任务，提高寄存器数据复用，减少冗余开销）。
-* **向量化** 改变的是**“单条指令处理的数据宽度”**（即一次指令读写/计算多个数据，榨干硬件带宽和指令发射槽）。
-
----
-
-#### 1. 线程粗化 (Thread Coarsening)
-
-##### 💡 核心概念：
-在最原始的 GPU 编程思维中，我们倾向于“一个线程只计算一个输出元素”（比如 Naive 矩阵乘法，每个线程只算 C[i][j] 的 1 个 float）。
-**线程粗化**则是反其道而行之：**将本该由多个线程完成的工作，合并交给同一个线程来串行完成。**
-
-在本仓库中，线程粗化的演进分为两步：
-* **Kernel 4 (1D Blocktiling)**：每线程只在 M 维度扩展，负责计算 TM 个元素（1D 粗化）。这是粗化的第一步，已经带来了显著的 A 矩阵数据复用。
-* **Kernel 5 (2D Blocktiling)**：进一步在 M 和 N 两个维度同时扩展，每线程负责 TM×TN 个元素（2D 粗化），获得更高的 A 和 B 的双向数据复用率。
-
-##### ⚡ 为什么粗化反而更快？
-虽然 GPU 拥有极强的并行度，但如果划分得太细，会带来很多副作用。线程粗化的优势在于：
-* **减少冗余访存（数据复用）**：在矩阵乘法中，计算 C[i][j] 和 C[i][j+1] 都需要读取 A 矩阵的第 i 行。如果分配给两个线程，它们会各自从 Shared Memory 读取相同的 A 元素。如果**粗化**为一个线程计算 C 的一个 TM 乘 TN 微型块（即 **Threadtiling / Register Tiling**），该线程只需要将 A 的元素读入寄存器一次，就可以用来跟 B 的多列进行乘加。这大幅减少了对共享内存的访问次数。
-* **减少线程同步（Barrier Reduction）**：合并了线程后，线程块（Thread Block）内的活跃线程数变少，从而减少了 __syncthreads() 的等待和同步开销。
-* **减少线程创建与调度开销**。
-
-##### ⚠️ 缺点/代价：
-* **消耗更多寄存器**：粗化线程意味着该线程需要在寄存器中暂存更多中间结果（如 TM 乘 TN 个累加值）。如果粗化度过大，会导致**寄存器溢出 (Register Spilling)** 到慢速内存，或者降低 GPU 的 Block 占用率 (Occupancy)。
-
----
-
-#### 2. 向量化 (Vectorization)
-
-##### 💡 核心概念：
-**向量化**是指利用硬件的 SIMD（单指令多数据）或宽内存总线特性，**用一条指令同时处理多个相邻的数据元素**。
-
-##### 🛠️ 在 CUDA 中的分类：
-* **访存向量化 (Memory Vectorization)**：使用 CUDA 内置的向量数据类型（如 float4、double2、int4）。比如用一条 float4 加载指令（128位宽）代替四条传统的 float 加载指令（32位宽）。其优势在于**指令数减少 75%**，极大缓解了 GPU 的指令发射瓶颈，并提升了总线利用效率。
-* **计算向量化 (Arithmetic Vectorization)**：利用特定的硬件指令同时计算多个数据。比如使用 half2（一次指令同时对两个半精度浮点数做乘加），或者 DP4A（八位整数点积指令）。
-
----
-
-#### 3. 它们之间的区别与协同关系
-
-| 维度 | 线程粗化 (Thread Coarsening) | 向量化 (Vectorization) |
-| :--- | :--- | :--- |
-| **优化维度** | **线程/任务分配维度** (线程做的事情变多了) | **硬件/指令宽度维度** (单条指令变宽了) |
-| **主要目标** | 提高数据复用（寄存器），减少共享内存冗余访问 | 减少指令数量，填满硬件访存/计算位宽 |
-| **制约瓶颈** | 受限于**寄存器数量 (Registers)** | 受限于**内存对齐 (Alignment)** 和**硬件指令集** |
-
-##### 🤝 完美协同（以本仓库的 Kernel 6 为例）：
-在高性能 CUDA SGEMM 中，这两者通常是结合在一起使用的：
-1. 我们首先进行 **Thread Coarsening**：让一个线程负责计算 C 的 TM 乘 TN（如 8 乘 8）的微型块。这个线程会把 A 的 8 个元素和 B 的 8 个元素暂存在寄存器中进行复用。
-2. 随后我们使用 **Vectorization**：
-   * **读取时**，由于线程粗化需要一次性读取多个数据，我们不使用单 float 读取，而是用 float4 向量化读取，一次搬运 4 个元素。
-   * **写回时**，计算完的 64 个 C 元素，我们也是通过强转为 float4，以 128 位向量化写回全局内存。
-
----
-
-### Q8: Shared Memory（共享内存）数组是怎么定义和同步的？
-
-共享内存（Shared Memory）是位于 SM（Streaming Multiprocessor）内部的高速片上缓存，访问延迟极低，主要用于同一个线程块（Thread Block）内部的数据复用与线程协作。
-
-#### 1. 共享内存数组的定义方式
-
-主要有两种定义方式：**静态分配**与**动态分配**。
-
-* **静态分配（Static Allocation）**：
-  在编译时就必须确定数组的大小。直接在核函数内使用 `__shared__` 修饰符声明即可。
-  ```cuda
-  template <const int BM, const int BN, const int BK>
-  __global__ void sgemmKernel(...) {
-      // 编译时通过模板参数确定 As 和 Bs 的大小
-      __shared__ float As[BM * BK];
-      __shared__ float Bs[BK * BN];
-  }
-  ```
-* **动态分配（Dynamic Allocation）**：
-  在运行时根据输入参数动态指定大小。使用 `extern __shared__` 关键字声明，且数组大小留空。在 Host 端启动 Kernel 时，通过三括号 `<<<...>>>` 的**第三个参数**传入分配的共享内存字节数（Bytes）。
-  ```cuda
-  // Kernel 内部声明
-  __global__ void myKernel(float *d_in) {
-      extern __shared__ float s_array[]; // 动态共享内存入口地址
-      int tid = threadIdx.x;
-      s_array[tid] = d_in[tid];
-  }
-
-  // Host 端调用（分配 threadsPerBlock 个 float 的空间）
-  int sharedMemBytes = threadsPerBlock * sizeof(float);
-  myKernel<<<gridSize, threadsPerBlock, sharedMemBytes>>>(d_in);
-  ```
-  *(注：如果同一个 Kernel 内动态声明多个不同类型的数组，它们会共享同一个起始地址，需通过指针偏移手动切分。)*
-
-#### 2. 共享内存数组的同步机制
-
-由于共享内存在同一个 Block 内的所有线程之间是共享的，并发读写同一块地址会带来**数据竞争**，因此必须引入同步。
-
-* **块级同步：`__syncthreads()`**：
-  最核心的同步屏障。执行到这一步的线程会暂停，直到**该 Block 内的所有线程**都到达该点。它同时保证了之前的所有内存读写对块内所有线程皆可见。
-  典型的**“加载-同步-计算-同步”**模式（以本项目 `5_kernel_2D_blocktiling.cuh` 为例）：
-  ```cuda
-  // 1. 各个线程协作把数据从全局内存加载到 As 和 Bs
-  As[(innerRowA + loadOffset) * BK + innerColA] = A[...];
-  Bs[(innerRowB + loadOffset) * BN + innerColB] = B[...];
-  
-  // 2. 必须同步，确保 As 和 Bs 已全部写入完成，防止慢线程读取到垃圾数据
-  __syncthreads(); 
-  
-  // 3. 各线程计算/消费 As 和 Bs 中的数据
-  for (uint dotIdx = 0; dotIdx < BK; ++dotIdx) {
-      sum += regM[i] * regN[j];
-  }
-  
-  // 4. 再次同步，确保所有线程都计算完毕，防止下一轮循环的加载过早覆盖当前数据
-  __syncthreads();
-  ```
-  > [!WARNING]
-  > `__syncthreads()` 不能放在包含分支分化（如 `if-else`）的分支内部，除非所有线程都必然会进入该分支，否则会导致死锁。
-
-* **Warp 级同步：`__syncwarp(mask)`**：
-  若仅需要 Warp（32个线程）内部协作，可使用更轻量的 `__syncwarp()` 仅同步 Warp 内指定掩码的线程，开销远小于 `__syncthreads()`。此外，将指针声明为 `volatile` 可强制每次读写都直达共享内存而绕过寄存器缓存。
-
-* **异步拷贝同步（Ampere 及以上）**：
-  现代架构提供了异步拷贝指令（如 `cp.async`），配合屏障（`cuda::barrier`）或协作组，在数据从全局内存异步拷入共享内存的过程中，允许计算单元同时并行计算，隐藏访存延迟。
----
-
-### Q9: 什么是 Roofline Model（屋顶线模型）？如何用它判断 Kernel 的性能瓶颈？
-
-**Roofline Model（屋顶线模型）** 是分析 GPU/CPU 程序性能瓶颈的标准框架。它通过一张图，直观地告诉你：**你的 Kernel 当前是被"算力"还是被"带宽"卡住了，以及离硬件极限还有多远。**
-
-#### 1. 核心概念
-
-Roofline 模型基于两个关键指标：
-
-* **算术强度 (Arithmetic Intensity, AI)**：每从内存搬运 1 字节数据，能够执行多少次浮点运算。单位为 **FLOPs/Byte**。
-  ```
-  AI = 总浮点运算次数 (FLOPs) / 总内存传输字节数 (Bytes)
-  ```
-* **可达性能上限 (Attainable Performance)**：硬件在给定算术强度下能够提供的最大 FLOPS。
-
-#### 2. "屋顶"长什么样？
-
-Roofline 图的 X 轴是算术强度 (FLOPs/Byte)，Y 轴是性能 (GFLOPs/s)：
-
-```
-性能 (GFLOPS/s)
-     │              ╱‾‾‾‾‾‾‾‾‾‾‾‾‾  ← 算力天花板 (Peak Compute)
-     │            ╱
-     │          ╱
-     │        ╱  ← 带宽斜坡 (Memory Bandwidth)
-     │      ╱
-     │    ╱
-     │  ╱
-     │╱
-     └──────────────────────────── 算术强度 (FLOPs/Byte)
-              ↑
-         拐点 (Ridge Point)
-```
-
-* **左侧斜坡区**（算术强度低）：性能被**显存带宽**限制，称为 **Memory-Bound（内存受限）**。无论计算单元多强，数据搬不上来就白搭。
-* **右侧平顶区**（算术强度高）：性能被**计算单元峰值**限制，称为 **Compute-Bound（计算受限）**。数据已经足够快地喂到计算单元。
-* **拐点 (Ridge Point)**：两条线的交汇处。算术强度恰好让带宽和算力同时满载。
-
-#### 3. 如何使用 Roofline 分析 SGEMM
-
-以本仓库的 SGEMM 优化为例：
-
-| 阶段 | 算术强度 (AI) | 瓶颈区域 | 优化方向 |
-|:---|:---|:---|:---|
-| Naive (Kernel 1) | ~0.25 FLOPs/Byte | 深度 Memory-Bound | 提升数据复用 |
-| SMEM Tiling (Kernel 3-5) | ~32 FLOPs/Byte | 越过拐点，进入 Compute-Bound | 优化指令效率 |
-| Warptiling (Kernel 10) | ~32 FLOPs/Byte | 贴近算力天花板 | 榨干 ALU 利用率 |
-
-#### 4. Nsight Compute 的 Roofline 视图
-
-在 NVIDIA Nsight Compute 中，可以直接生成 Roofline 图：
-```bash
-ncu --set full -o profile_output ./sgemm <kernel_number>
-```
-然后在 Nsight Compute GUI 中打开 `profile_output.ncu-rep`，切换到 **Roofline** 标签页，即可看到你的 Kernel 在图上的位置（一个点），以及它距离屋顶线（硬件极限）的差距。
-
----
-
-### Q10: 什么是 Occupancy（占用率）？它和性能是什么关系？
-
-**Occupancy（占用率）** 是 GPU 性能调优中的核心资源指标，定义为：
-
-> **Occupancy = SM 上活跃的 Warp 数量 / SM 最大可支持的 Warp 数量**
-
-例如，如果一个 SM 最多支持 64 个 Warp，而你的 Kernel 只激活了 32 个，那么 Occupancy 就是 50%。
-
-#### 1. 三大资源约束
-
-SM 能同时调度多少个 Block，受以下三个物理资源的**最短板**限制：
-
-* **寄存器数量 (Registers per SM)**：
-  每个线程使用的寄存器越多，能同时运行的线程就越少。例如 SM 有 65536 个寄存器，每线程用 64 个，则最多只能有 `65536 / 64 = 1024` 个线程 = 32 个 Warp。
-* **共享内存容量 (Shared Memory per SM)**：
-  每个 Block 使用的 SMEM 越多，SM 能放下的 Block 就越少。例如 SM 有 48KB SMEM，每个 Block 用 32KB，则最多只能容纳 1 个 Block。
-* **每个 SM 的最大 Block/Warp 数量**：
-  硬件限制了每个 SM 最多有多少个 Block（如 32 个）和 Warp（如 64 个），即使寄存器和 SMEM 还有余量。
-
-#### 2. Occupancy 和性能的关系：并不是越高越好！
-
-这是一个常见误区。更高的 Occupancy **不一定**意味着更好的性能：
-
-* **高 Occupancy 的优势**：更多 Warp 意味着调度器有更多的候选 Warp 来**隐藏访存延迟**。当一个 Warp 在等待数据时，调度器可以切换到其他就绪的 Warp 继续执行。
-* **低 Occupancy 的优势**：如果我们降低 Occupancy（比如通过增大每线程的分块大小 TM×TN），每个线程可以使用**更多寄存器**来缓存数据，从而减少对 SMEM 和全局内存的访问。这在计算受限的场景下反而更快。
-
-在本仓库的 SGEMM 中，Kernel 5 (2D Blocktiling) 使用了 `__launch_bounds__` 来限制每个 Block 的线程数，主动降低了 Occupancy，但因为更高的寄存器复用率，性能反而更好。
-
-#### 3. 如何计算和优化 Occupancy
-
-* **CUDA Occupancy Calculator**：NVIDIA 提供了 [Excel 表格工具](https://developer.nvidia.com/cuda-occupancy-calculator) 或使用 API `cudaOccupancyMaxActiveBlocksPerMultiprocessor()` 在运行时计算。
-* **`__launch_bounds__` 指令**：在核函数声明时使用，告知编译器每个 Block 的最大线程数和期望的最小 Block 数，帮助编译器优化寄存器分配。
-  ```cuda
-  __global__ void __launch_bounds__(256, 1) myKernel(...) { ... }
-  // 256: 每个Block最多256线程；1: 每个SM至少1个Block
-  ```
-* **开发建议**：先以合理的 Occupancy（50%~75%）为起点，再根据 Profiling 结果决定是否需要牺牲 Occupancy 换取更多寄存器复用。
-
----
-
-### Q11: 循环展开 (#pragma unroll) 的作用和原理是什么？
-
-**循环展开 (Loop Unrolling)** 是将循环体复制多份以减少循环控制开销的编译器优化技术。在 CUDA 编程中，它通过 `#pragma unroll` 指令显式控制。
-
-#### 1. 为什么循环展开能提升性能？
-
-一个普通的 `for` 循环，每次迭代都伴随着：
-* **比较指令**：判断 `j < LOOP_COUNT` 是否成立。
-* **自增指令**：`j++`。
-* **跳转指令**：跳回循环头部。
-
-这些**循环控制指令不产生任何有用的计算**，却占用了宝贵的指令发射槽。展开后，这些开销被大幅消除：
-
-```cuda
-// 展开前：每次迭代都有 比较 + 自增 + 跳转 开销
-for (int j = 0; j < 4; j++) {
-    sum += a[tid] + b[tid];
-}
-
-// 展开后：没有循环控制开销，GPU 可以连续发射计算指令
-sum += a[tid] + b[tid];
-sum += a[tid] + b[tid];
-sum += a[tid] + b[tid];
-sum += a[tid] + b[tid];
-```
-
-展开带来的三个核心好处：
-* **减少分支指令**：消除了循环的比较和跳转，GPU 不需要处理 Warp 可能的分支分歧。
-* **增加指令级并行 (ILP)**：展开后多条独立指令暴露出来，GPU 的流水线可以同时处理更多操作。
-* **寄存器复用机会**：编译器在展开后能看到更大的代码窗口，更好地进行寄存器分配和常量折叠优化。
-
-#### 2. 在 CUDA 中如何使用
-
-* **完全展开**：当循环次数是编译时常量时，使用 `#pragma unroll` 让编译器将循环完全展开。
-  ```cuda
-  #pragma unroll
-  for (int i = 0; i < TM; ++i) {  // TM 是模板常量
-      regM[i] = As[dotIdx * BM + threadRow * TM + i];
-  }
-  ```
-* **部分展开**：指定展开因子，适用于循环次数较大的情况：
-  ```cuda
-  #pragma unroll 4  // 每次展开 4 次迭代
-  for (int j = 0; j < LOOP_COUNT; j++) { ... }
-  ```
-* **禁止展开**：在某些场景下展开反而有害（如增大代码体积导致指令缓存压力），可以使用 `#pragma unroll 1` 禁止展开。
-
-#### 3. 编译器自动展开 vs 手动声明
-
-在本仓库的 `unrolling_example.cu` 实验中发现，**即使不写 `#pragma unroll`，`nvcc` 编译器在很多情况下也会自动展开循环**（尤其是循环次数为编译时常量且循环体简单时）。
-
-可以通过查看 PTX 汇编来验证编译器是否进行了展开：
-```bash
-nvcc -ptx unrolling_example.cu -o - | less
-```
-如果在汇编中看不到循环的分支跳转指令（如 `@p bra`），说明编译器已经自动将循环展开了。
-
-#### 4. 在 SGEMM 中的应用
-
-在本仓库的矩阵乘法 Kernel 中，`#pragma unroll` 主要应用在以下关键内循环中：
-* **从 SMEM 加载到寄存器**的循环（`for i in TM / TN`）。
-* **内积计算**的循环（`for dotIdx in BK`）。
-* **写回结果到全局内存**的循环。
-
-这些循环的迭代次数都是模板常量，编译器可以完全展开，从而将内层计算变成一长串无分支的乘加指令流。
 
 ---
 

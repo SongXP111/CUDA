@@ -5,13 +5,27 @@
 ---
 
 ## 目录 (Table of Contents)
-- [Q1: 什么是全局内存的合并访存 (Coalesced Memory Access)？它的底层硬件机理和优化法则是什么？](#q1-什么是全局内存的合并访存-coalesced-memory-access它的底层硬件机理和优化法则是什么)
-- [Q2: 在这个 benchmark 里，我们是怎么从“内存受限”变成“计算受限”的？](#q2-在这个-benchmark-里我们是怎么从内存受限变成计算受限的)
+
+以下问题按推荐的学习顺序排列，分为三个阶段：
+
+#### 第一阶段：基础概念（优化之前必须理解的底层原理）
+- [Q1: 什么是全局内存的合并访存 (Coalesced Memory Access)？](#q1-什么是全局内存的合并访存-coalesced-memory-access它的底层硬件机理和优化法则是什么)
+- [Q9: 什么是 Roofline Model（屋顶线模型）？如何用它判断 Kernel 的性能瓶颈？](#q9-什么是-roofline-model屋顶线模型如何用它判断-kernel-的性能瓶颈)
+- [Q10: 什么是 Occupancy（占用率）？它和性能是什么关系？](#q10-什么是-occupancy占用率它和性能是什么关系)
+- [Q8: Shared Memory（共享内存）数组是怎么定义和同步的？](#q8-shared-memory共享内存数组是怎么定义和同步的)
+
+#### 第二阶段：优化主线（从 Naive 到接近 cuBLAS 的完整链路）
+- [Q2: 在这个 benchmark 里，我们是怎么从"内存受限"变成"计算受限"的？](#q2-在这个-benchmark-里我们是怎么从内存受限变成计算受限的)
 - [Q3: 分块 (Blocktiling) 是什么？是 Shared Memory Tiling 吗？](#q3-分块-blocktiling-是什么是-shared-memory-tiling-吗)
-- [Q4: 向量化访存 (Vectorized Mem Access, Kernel 6) 是什么？](#q4-向量化访存-vectorized-mem-access-kernel-6-是什么)
-- [Q5: 双缓冲 (Double Buffering / 软件流水线) 是什么？](#q5-双缓冲-double-buffering--软件流水线-是什么)
 - [Q6: 如何规避 Shared Memory 的 Bank Conflict（银行冲突）？](#q6-如何规避-shared-memory-的-bank-conflict银行冲突)
 - [Q7: 解释一下 Thread Coarsening 与 Vectorization（线程粗化与向量化）](#q7-解释一下-thread-coarsening-与-vectorization线程粗化与向量化)
+- [Q4: 向量化访存 (Vectorized Mem Access, Kernel 6) 是什么？](#q4-向量化访存-vectorized-mem-access-kernel-6-是什么)
+- [Q11: 循环展开 (#pragma unroll) 的作用和原理是什么？](#q11-循环展开-pragma-unroll-的作用和原理是什么)
+- [Q5: 双缓冲 (Double Buffering / 软件流水线) 是什么？](#q5-双缓冲-double-buffering--软件流水线-是什么)
+
+#### 第三阶段：性能分析（定位瓶颈、验证优化效果）
+- [Q12: 如何使用 Nsight Compute (ncu) 对 CUDA Kernel 进行性能分析？](#q12-如何使用-nsight-compute-ncu-对-cuda-kernel-进行性能分析)
+
 
 ---
 
@@ -406,3 +420,285 @@ regN[i] = Bs[(dotIdx * 8 + i) * 16 + threadCol];
 2. 随后我们使用 **Vectorization**：
    * **读取时**，由于线程粗化需要一次性读取多个数据，我们不使用单 float 读取，而是用 float4 向量化读取，一次搬运 4 个元素。
    * **写回时**，计算完的 64 个 C 元素，我们也是通过强转为 float4，以 128 位向量化写回全局内存。
+
+---
+
+### Q8: Shared Memory（共享内存）数组是怎么定义和同步的？
+
+共享内存（Shared Memory）是位于 SM（Streaming Multiprocessor）内部的高速片上缓存，访问延迟极低，主要用于同一个线程块（Thread Block）内部的数据复用与线程协作。
+
+#### 1. 共享内存数组的定义方式
+
+主要有两种定义方式：**静态分配**与**动态分配**。
+
+* **静态分配（Static Allocation）**：
+  在编译时就必须确定数组的大小。直接在核函数内使用 `__shared__` 修饰符声明即可。
+  ```cuda
+  template <const int BM, const int BN, const int BK>
+  __global__ void sgemmKernel(...) {
+      // 编译时通过模板参数确定 As 和 Bs 的大小
+      __shared__ float As[BM * BK];
+      __shared__ float Bs[BK * BN];
+  }
+  ```
+* **动态分配（Dynamic Allocation）**：
+  在运行时根据输入参数动态指定大小。使用 `extern __shared__` 关键字声明，且数组大小留空。在 Host 端启动 Kernel 时，通过三括号 `<<<...>>>` 的**第三个参数**传入分配的共享内存字节数（Bytes）。
+  ```cuda
+  // Kernel 内部声明
+  __global__ void myKernel(float *d_in) {
+      extern __shared__ float s_array[]; // 动态共享内存入口地址
+      int tid = threadIdx.x;
+      s_array[tid] = d_in[tid];
+  }
+
+  // Host 端调用（分配 threadsPerBlock 个 float 的空间）
+  int sharedMemBytes = threadsPerBlock * sizeof(float);
+  myKernel<<<gridSize, threadsPerBlock, sharedMemBytes>>>(d_in);
+  ```
+  *(注：如果同一个 Kernel 内动态声明多个不同类型的数组，它们会共享同一个起始地址，需通过指针偏移手动切分。)*
+
+#### 2. 共享内存数组的同步机制
+
+由于共享内存在同一个 Block 内的所有线程之间是共享的，并发读写同一块地址会带来**数据竞争**，因此必须引入同步。
+
+* **块级同步：`__syncthreads()`**：
+  最核心的同步屏障。执行到这一步的线程会暂停，直到**该 Block 内的所有线程**都到达该点。它同时保证了之前的所有内存读写对块内所有线程皆可见。
+  典型的**“加载-同步-计算-同步”**模式（以本项目 `5_kernel_2D_blocktiling.cuh` 为例）：
+  ```cuda
+  // 1. 各个线程协作把数据从全局内存加载到 As 和 Bs
+  As[(innerRowA + loadOffset) * BK + innerColA] = A[...];
+  Bs[(innerRowB + loadOffset) * BN + innerColB] = B[...];
+  
+  // 2. 必须同步，确保 As 和 Bs 已全部写入完成，防止慢线程读取到垃圾数据
+  __syncthreads(); 
+  
+  // 3. 各线程计算/消费 As 和 Bs 中的数据
+  for (uint dotIdx = 0; dotIdx < BK; ++dotIdx) {
+      sum += regM[i] * regN[j];
+  }
+  
+  // 4. 再次同步，确保所有线程都计算完毕，防止下一轮循环的加载过早覆盖当前数据
+  __syncthreads();
+  ```
+  > [!WARNING]
+  > `__syncthreads()` 不能放在包含分支分化（如 `if-else`）的分支内部，除非所有线程都必然会进入该分支，否则会导致死锁。
+
+* **Warp 级同步：`__syncwarp(mask)`**：
+  若仅需要 Warp（32个线程）内部协作，可使用更轻量的 `__syncwarp()` 仅同步 Warp 内指定掩码的线程，开销远小于 `__syncthreads()`。此外，将指针声明为 `volatile` 可强制每次读写都直达共享内存而绕过寄存器缓存。
+
+* **异步拷贝同步（Ampere 及以上）**：
+  现代架构提供了异步拷贝指令（如 `cp.async`），配合屏障（`cuda::barrier`）或协作组，在数据从全局内存异步拷入共享内存的过程中，允许计算单元同时并行计算，隐藏访存延迟。
+---
+
+### Q9: 什么是 Roofline Model（屋顶线模型）？如何用它判断 Kernel 的性能瓶颈？
+
+**Roofline Model（屋顶线模型）** 是分析 GPU/CPU 程序性能瓶颈的标准框架。它通过一张图，直观地告诉你：**你的 Kernel 当前是被"算力"还是被"带宽"卡住了，以及离硬件极限还有多远。**
+
+#### 1. 核心概念
+
+Roofline 模型基于两个关键指标：
+
+* **算术强度 (Arithmetic Intensity, AI)**：每从内存搬运 1 字节数据，能够执行多少次浮点运算。单位为 **FLOPs/Byte**。
+  ```
+  AI = 总浮点运算次数 (FLOPs) / 总内存传输字节数 (Bytes)
+  ```
+* **可达性能上限 (Attainable Performance)**：硬件在给定算术强度下能够提供的最大 FLOPS。
+
+#### 2. "屋顶"长什么样？
+
+Roofline 图的 X 轴是算术强度 (FLOPs/Byte)，Y 轴是性能 (GFLOPs/s)：
+
+```
+性能 (GFLOPS/s)
+     │              ╱‾‾‾‾‾‾‾‾‾‾‾‾‾  ← 算力天花板 (Peak Compute)
+     │            ╱
+     │          ╱
+     │        ╱  ← 带宽斜坡 (Memory Bandwidth)
+     │      ╱
+     │    ╱
+     │  ╱
+     │╱
+     └──────────────────────────── 算术强度 (FLOPs/Byte)
+              ↑
+         拐点 (Ridge Point)
+```
+
+* **左侧斜坡区**（算术强度低）：性能被**显存带宽**限制，称为 **Memory-Bound（内存受限）**。无论计算单元多强，数据搬不上来就白搭。
+* **右侧平顶区**（算术强度高）：性能被**计算单元峰值**限制，称为 **Compute-Bound（计算受限）**。数据已经足够快地喂到计算单元。
+* **拐点 (Ridge Point)**：两条线的交汇处。算术强度恰好让带宽和算力同时满载。
+
+#### 3. 如何使用 Roofline 分析 SGEMM
+
+以本仓库的 SGEMM 优化为例：
+
+| 阶段 | 算术强度 (AI) | 瓶颈区域 | 优化方向 |
+|:---|:---|:---|:---|
+| Naive (Kernel 1) | ~0.25 FLOPs/Byte | 深度 Memory-Bound | 提升数据复用 |
+| SMEM Tiling (Kernel 3-5) | ~32 FLOPs/Byte | 越过拐点，进入 Compute-Bound | 优化指令效率 |
+| Warptiling (Kernel 10) | ~32 FLOPs/Byte | 贴近算力天花板 | 榨干 ALU 利用率 |
+
+#### 4. Nsight Compute 的 Roofline 视图
+
+在 NVIDIA Nsight Compute 中，可以直接生成 Roofline 图：
+```bash
+ncu --set full -o profile_output ./sgemm <kernel_number>
+```
+然后在 Nsight Compute GUI 中打开 `profile_output.ncu-rep`，切换到 **Roofline** 标签页，即可看到你的 Kernel 在图上的位置（一个点），以及它距离屋顶线（硬件极限）的差距。
+
+---
+
+### Q10: 什么是 Occupancy（占用率）？它和性能是什么关系？
+
+**Occupancy（占用率）** 是 GPU 性能调优中的核心资源指标，定义为：
+
+> **Occupancy = SM 上活跃的 Warp 数量 / SM 最大可支持的 Warp 数量**
+
+例如，如果一个 SM 最多支持 64 个 Warp，而你的 Kernel 只激活了 32 个，那么 Occupancy 就是 50%。
+
+#### 1. 三大资源约束
+
+SM 能同时调度多少个 Block，受以下三个物理资源的**最短板**限制：
+
+* **寄存器数量 (Registers per SM)**：
+  每个线程使用的寄存器越多，能同时运行的线程就越少。例如 SM 有 65536 个寄存器，每线程用 64 个，则最多只能有 `65536 / 64 = 1024` 个线程 = 32 个 Warp。
+* **共享内存容量 (Shared Memory per SM)**：
+  每个 Block 使用的 SMEM 越多，SM 能放下的 Block 就越少。例如 SM 有 48KB SMEM，每个 Block 用 32KB，则最多只能容纳 1 个 Block。
+* **每个 SM 的最大 Block/Warp 数量**：
+  硬件限制了每个 SM 最多有多少个 Block（如 32 个）和 Warp（如 64 个），即使寄存器和 SMEM 还有余量。
+
+#### 2. Occupancy 和性能的关系：并不是越高越好！
+
+这是一个常见误区。更高的 Occupancy **不一定**意味着更好的性能：
+
+* **高 Occupancy 的优势**：更多 Warp 意味着调度器有更多的候选 Warp 来**隐藏访存延迟**。当一个 Warp 在等待数据时，调度器可以切换到其他就绪的 Warp 继续执行。
+* **低 Occupancy 的优势**：如果我们降低 Occupancy（比如通过增大每线程的分块大小 TM×TN），每个线程可以使用**更多寄存器**来缓存数据，从而减少对 SMEM 和全局内存的访问。这在计算受限的场景下反而更快。
+
+在本仓库的 SGEMM 中，Kernel 5 (2D Blocktiling) 使用了 `__launch_bounds__` 来限制每个 Block 的线程数，主动降低了 Occupancy，但因为更高的寄存器复用率，性能反而更好。
+
+#### 3. 如何计算和优化 Occupancy
+
+* **CUDA Occupancy Calculator**：NVIDIA 提供了 [Excel 表格工具](https://developer.nvidia.com/cuda-occupancy-calculator) 或使用 API `cudaOccupancyMaxActiveBlocksPerMultiprocessor()` 在运行时计算。
+* **`__launch_bounds__` 指令**：在核函数声明时使用，告知编译器每个 Block 的最大线程数和期望的最小 Block 数，帮助编译器优化寄存器分配。
+  ```cuda
+  __global__ void __launch_bounds__(256, 1) myKernel(...) { ... }
+  // 256: 每个Block最多256线程；1: 每个SM至少1个Block
+  ```
+* **开发建议**：先以合理的 Occupancy（50%~75%）为起点，再根据 Profiling 结果决定是否需要牺牲 Occupancy 换取更多寄存器复用。
+
+---
+
+### Q11: 循环展开 (#pragma unroll) 的作用和原理是什么？
+
+**循环展开 (Loop Unrolling)** 是将循环体复制多份以减少循环控制开销的编译器优化技术。在 CUDA 编程中，它通过 `#pragma unroll` 指令显式控制。
+
+#### 1. 为什么循环展开能提升性能？
+
+一个普通的 `for` 循环，每次迭代都伴随着：
+* **比较指令**：判断 `j < LOOP_COUNT` 是否成立。
+* **自增指令**：`j++`。
+* **跳转指令**：跳回循环头部。
+
+这些**循环控制指令不产生任何有用的计算**，却占用了宝贵的指令发射槽。展开后，这些开销被大幅消除：
+
+```cuda
+// 展开前：每次迭代都有 比较 + 自增 + 跳转 开销
+for (int j = 0; j < 4; j++) {
+    sum += a[tid] + b[tid];
+}
+
+// 展开后：没有循环控制开销，GPU 可以连续发射计算指令
+sum += a[tid] + b[tid];
+sum += a[tid] + b[tid];
+sum += a[tid] + b[tid];
+sum += a[tid] + b[tid];
+```
+
+展开带来的三个核心好处：
+* **减少分支指令**：消除了循环的比较和跳转，GPU 不需要处理 Warp 可能的分支分歧。
+* **增加指令级并行 (ILP)**：展开后多条独立指令暴露出来，GPU 的流水线可以同时处理更多操作。
+* **寄存器复用机会**：编译器在展开后能看到更大的代码窗口，更好地进行寄存器分配和常量折叠优化。
+
+#### 2. 在 CUDA 中如何使用
+
+* **完全展开**：当循环次数是编译时常量时，使用 `#pragma unroll` 让编译器将循环完全展开。
+  ```cuda
+  #pragma unroll
+  for (int i = 0; i < TM; ++i) {  // TM 是模板常量
+      regM[i] = As[dotIdx * BM + threadRow * TM + i];
+  }
+  ```
+* **部分展开**：指定展开因子，适用于循环次数较大的情况：
+  ```cuda
+  #pragma unroll 4  // 每次展开 4 次迭代
+  for (int j = 0; j < LOOP_COUNT; j++) { ... }
+  ```
+* **禁止展开**：在某些场景下展开反而有害（如增大代码体积导致指令缓存压力），可以使用 `#pragma unroll 1` 禁止展开。
+
+#### 3. 编译器自动展开 vs 手动声明
+
+在本仓库的 `unrolling_example.cu` 实验中发现，**即使不写 `#pragma unroll`，`nvcc` 编译器在很多情况下也会自动展开循环**（尤其是循环次数为编译时常量且循环体简单时）。
+
+可以通过查看 PTX 汇编来验证编译器是否进行了展开：
+```bash
+nvcc -ptx unrolling_example.cu -o - | less
+```
+如果在汇编中看不到循环的分支跳转指令（如 `@p bra`），说明编译器已经自动将循环展开了。
+
+#### 4. 在 SGEMM 中的应用
+
+在本仓库的矩阵乘法 Kernel 中，`#pragma unroll` 主要应用在以下关键内循环中：
+* **从 SMEM 加载到寄存器**的循环（`for i in TM / TN`）。
+* **内积计算**的循环（`for dotIdx in BK`）。
+* **写回结果到全局内存**的循环。
+
+这些循环的迭代次数都是模板常量，编译器可以完全展开，从而将内层计算变成一长串无分支的乘加指令流。
+
+---
+
+### Q12: 如何使用 Nsight Compute (ncu) 对 CUDA Kernel 进行性能分析？
+
+**NVIDIA Nsight Compute (ncu)** 是 NVIDIA 官方提供的 GPU Kernel 级性能分析工具。它能对**单个 Kernel 的执行**进行极其详细的硬件计数器采集和瓶颈诊断。
+
+#### 1. 基本使用方法
+
+```bash
+# 分析指定 Kernel（默认采集基本指标）
+ncu ./sgemm <kernel_number>
+
+# 采集完整指标集（包含 Roofline、Memory、Compute 等所有分析）
+ncu --set full -o profile_output ./sgemm <kernel_number>
+
+# 只分析第 N 次 Kernel 启动（跳过 warmup）
+ncu --launch-skip 5 --launch-count 1 ./sgemm <kernel_number>
+```
+
+分析结果可以在终端直接查看，也可以用 Nsight Compute GUI 打开 `.ncu-rep` 文件进行交互式分析。
+
+#### 2. 关键性能指标
+
+在 ncu 的分析报告中，以下指标对 SGEMM 调优最为关键：
+
+| 指标类别 | 关键指标 | 含义 |
+|:---|:---|:---|
+| **Compute** | SM 利用率 (SM Throughput) | 计算单元的繁忙程度 |
+| **Memory** | 显存吞吐 (DRAM Throughput) | 实际显存带宽利用率 |
+| **Memory** | L2 命中率 (L2 Hit Rate) | L2 缓存的有效性 |
+| **Instruction** | 指令发射效率 (Issue Slot Utilization) | Warp 调度器的指令发射率 |
+| **Warp** | Warp Stall 原因分布 | 线程束暂停的原因（等数据？等同步？等指令？） |
+| **Occupancy** | 理论 vs 实际 Occupancy | 资源受限情况 |
+
+#### 3. 如何根据指标定位瓶颈
+
+* **如果 DRAM Throughput 接近硬件上限**（如 A100 的 ~2 TB/s 的 80%+）→ **Memory-Bound**。优化方向：增加数据复用（Tiling）、向量化访存（float4）。
+* **如果 SM Throughput 很高但 Issue Slot Utilization 不满** → **指令发射瓶颈**。优化方向：减少指令数（向量化、循环展开）、增加 ILP。
+* **如果 Warp Stall 主要是 "Wait"（等待 Barrier）** → **同步开销过大**。优化方向：减少 `__syncthreads()` 次数（双缓冲）、调整分块大小。
+* **如果 Occupancy 很低且 Warp Stall 主要是 "Long Scoreboard"（等待长延迟操作）** → **延迟隐藏不足**。优化方向：提高 Occupancy 或使用双缓冲来预取数据。
+
+#### 4. 与 Nsight Systems (nsys) 的区别
+
+| 工具 | 分析粒度 | 适用场景 |
+|:---|:---|:---|
+| **Nsight Systems (nsys)** | 系统级时间线 | 分析 CPU-GPU 交互、Kernel 启动延迟、Stream 并发、整体 Pipeline |
+| **Nsight Compute (ncu)** | 单 Kernel 级硬件计数器 | 深入分析单个 Kernel 的计算效率、访存模式、瓶颈原因 |
+
+**开发建议**：先用 `nsys` 确认宏观瓶颈在哪个 Kernel（或 CPU-GPU 数据传输），再用 `ncu` 对具体 Kernel 做深度剖析。

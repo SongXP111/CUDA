@@ -14,6 +14,25 @@
 
 ---
 
+## 常见问题与核心概念 (Q&A)
+关于本章中矩阵乘法优化的核心底层机制，我们在 [QA.md](QA.md) 中整理了详细的问答录：
+- [Q1: 全局内存合并访存 (Coalesced Memory Access) 的底层硬件机理和优化法则](QA.md#q1-什么是全局内存的合并访存-coalesced-memory-access它的底层硬件机理和优化法则是什么)
+- [Q2: Benchmark 里是如何从“内存受限”转化为“计算受限”的？](QA.md#q2-在这个-benchmark-里我们是怎么从内存受限变成计算受限的)
+- [Q3: 分块 (Blocktiling) 与 Shared Memory Tiling 概念解析（详解三层分块体系）](QA.md#q3-分块-blocktiling-是什么是-shared-memory-tiling-吗)
+- [Q4: 向量化访存 (Vectorized Mem Access, Kernel 6) 原理与限制](QA.md#q4-向量化访存-vectorized-mem-access-kernel-6-是什么)
+- [Q5: 双缓冲 (Double Buffering / 软件流水线, Kernel 11) 流水线设计](QA.md#q5-双缓冲-double-buffering--软件流水线-是什么)
+- [Q6: 如何规避 Shared Memory 的 Bank Conflict 银行冲突（Padding 与 Swizzling）](QA.md#q6-如何规避-shared-memory-的-bank-conflict银行冲突)
+- [Q7: Thread Coarsening 与 Vectorization（线程粗化与向量化）的协同关系](QA.md#q7-解释一下-thread-coarsening-与-vectorization线程粗化与向量化)
+- [Q8: Shared Memory（共享内存）数组的定义（静态/动态）与同步机制（Warp级/Block级）](QA.md#q8-shared-memory共享内存数组是怎么定义和同步的)
+- [Q9: 什么是 Roofline Model（屋顶线模型）？如何用它判断 Kernel 的性能瓶颈？](QA.md#q9-什么是-roofline-model屋顶线模型如何用它判断-kernel-的性能瓶颈)
+- [Q10: 什么是 Occupancy（占用率）？它和性能是什么关系？](QA.md#q10-什么是-occupancy占用率它和性能是什么关系)
+- [Q11: 循环展开 (#pragma unroll) 的作用和原理是什么？](QA.md#q11-循环展开-pragma-unroll-的作用和原理是什么)
+- [Q12: 如何使用 Nsight Compute (ncu) 对 CUDA Kernel 进行性能分析？](QA.md#q12-如何使用-nsight-compute-ncu-对-cuda-kernel-进行性能分析)
+
+
+
+---
+
 ## 行优先 (Row Major) vs 列优先 (Column Major)
 
 * cuBLAS 要求输入矩阵为**列优先**格式，因此我们在计算前必须进行转置。

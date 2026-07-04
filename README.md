@@ -80,3 +80,10 @@
   * [Q5: 双缓冲 (Double Buffering / 软件流水线) 是什么？](./07_Faster_Matmul/QA.md#q5-双缓冲-double-buffering--软件流水线-是什么)
   * [Q6: 如何规避 Shared Memory 的 Bank Conflict（银行冲突）？](./07_Faster_Matmul/QA.md#q6-如何规避-shared-memory-的-bank-conflict银行冲突)
   * [Q7: 解释一下 Thread Coarsening 与 Vectorization（线程粗化与向量化）](./07_Faster_Matmul/QA.md#q7-解释一下-thread-coarsening-与-vectorization线程粗化与向量化)
+  * [Q8: Shared Memory（共享内存）数组是怎么定义和同步的？](./07_Faster_Matmul/QA.md#q8-shared-memory共享内存数组是怎么定义和同步的)
+  * [Q9: 什么是 Roofline Model（屋顶线模型）？如何用它判断 Kernel 的性能瓶颈？](./07_Faster_Matmul/QA.md#q9-什么是-roofline-model屋顶线模型如何用它判断-kernel-的性能瓶颈)
+  * [Q10: 什么是 Occupancy（占用率）？它和性能是什么关系？](./07_Faster_Matmul/QA.md#q10-什么是-occupancy占用率它和性能是什么关系)
+  * [Q11: 循环展开 (#pragma unroll) 的作用和原理是什么？](./07_Faster_Matmul/QA.md#q11-循环展开-pragma-unroll-的作用和原理是什么)
+  * [Q12: 如何使用 Nsight Compute (ncu) 对 CUDA Kernel 进行性能分析？](./07_Faster_Matmul/QA.md#q12-如何使用-nsight-compute-ncu-对-cuda-kernel-进行性能分析)
+
+

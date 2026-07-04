@@ -12,6 +12,23 @@
 
 **I was too lazy to write this so lets jump over to Simon Boehm's [blog](https://siboehm.com/articles/22/CUDA-MMM) & [git repo](https://github.com/siboehm/SGEMM_CUDA)**
 
+## Q&A: Common Questions & Core Concepts
+For in-depth explanations of optimization concepts, refer to the [QA.md](QA.md) document:
+- [Q1: What is Coalesced Memory Access? Underlying hardware mechanism & optimization laws.](QA.md#q1-什么是全局内存的合并访存-coalesced-memory-access它的底层硬件机理和优化法则是什么)
+- [Q2: How did we shift from "Memory-Bound" to "Compute-Bound" in this benchmark?](QA.md#q2-在这个-benchmark-里我们是怎么从内存受限变成计算受限的)
+- [Q3: What is Blocktiling? Is it Shared Memory Tiling? (3 levels of Tiling).](QA.md#q3-分块-blocktiling-是什么是-shared-memory-tiling-吗)
+- [Q4: What is Vectorized Memory Access (Kernel 6)?](QA.md#q4-向量化访存-vectorized-mem-access-kernel-6-是什么)
+- [Q5: What is Double Buffering (Software Pipelining, Kernel 11)?](QA.md#q5-双缓冲-double-buffering--软件流水线-是什么)
+- [Q6: How to avoid Shared Memory Bank Conflicts (Padding vs. Swizzling)?](QA.md#q6-如何规避-shared-memory-的-bank-conflict银行冲突)
+- [Q7: Explain Thread Coarsening & Vectorization.](QA.md#q7-解释一下-thread-coarsening-与-vectorization线程粗化与向量化)
+- [Q8: How is `__shared__` memory array defined and synchronized?](QA.md#q8-shared-memory共享内存数组是怎么定义和同步的)
+- [Q9: What is Roofline Model (Attainable Performance vs Arithmetic Intensity)?](QA.md#q9-什么是-roofline-model屋顶线模型如何用它判断-kernel-的性能瓶颈)
+- [Q10: What is Occupancy? Underlying resource constraints & trade-offs.](QA.md#q10-什么是-occupancy占用率它和性能是什么关系)
+- [Q11: What is the purpose and mechanism of Loop Unrolling (#pragma unroll)?](QA.md#q11-循环展开-pragma-unroll-的作用和原理是什么)
+- [Q12: How to profile CUDA Kernels using Nsight Compute (ncu)?](QA.md#q12-如何使用-nsight-compute-ncu-对-cuda-kernel-进行性能分析)
+
+
+
 ## Row Major vs Column Major
 
 - cuBLAS expects matrices to be in column major format so we have to transpose beforehand

@@ -11,6 +11,7 @@
 | **第五章** | `05_Writing_your_First_Kernels/` | CUDA 基础、核函数编写、Profiling 分析、原子操作、Streams |
 | **第六章** | `06_CUDA_APIs/` | cuBLAS、cuDNN、cuBLASmp 等官方加速库 |
 | **第七章** | `07_Faster_Matmul/` | 矩阵乘法（SGEMM）性能分阶优化与极致调优 |
+| **第八章** | `08_Triton/` | Triton 编程模型、Block-level 算子开发与 GPU 性能对比 |
 
 ---
 
@@ -85,5 +86,15 @@
   * [Q10: 循环展开 (#pragma unroll) 的作用和原理是什么？](./07_Faster_Matmul/QA.md#q10-循环展开-#pragma-unroll-的作用和原理是什么)
   * [Q11: 双缓冲 (Double Buffering / 软件流水线) 是什么？](./07_Faster_Matmul/QA.md#q11-双缓冲-double-buffering-/-软件流水线-是什么)
   * [Q12: 如何使用 Nsight Compute (ncu) 对 CUDA Kernel 进行性能分析？](./07_Faster_Matmul/QA.md#q12-如何使用-nsight-compute-ncu-对-cuda-kernel-进行性能分析)
+
+---
+
+### 📙 第八章：Triton 编程与优化
+
+> 完整 Q&A 文档：[08_Triton/QA.md](./08_Triton/QA.md)
+
+* 🐍 **Triton 编程模型与底层原理**
+  * [Q1: CUDA 与 Triton 的编程模型有什么本质区别？什么是“Block-level”编程？](./08_Triton/QA.md#q1-cuda-与-triton-的编程模型有什么本质区别什么是block-level编程)
+
 
 

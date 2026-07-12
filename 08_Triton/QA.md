@@ -25,6 +25,8 @@ Triton 的核心设计哲学可以总结为一句话：**CUDA 是“线程块内
 #### 2. Triton 编程模型 (Blocked program + Scalar threads)
 * **编写视角**：在 Triton 中，你是在**以 Block（块/张量）为基本单位**进行编程。Triton 代码中操作的变量是多维张量，例如 `tl.arange(0, BLOCK_SIZE)`，而不是单精度浮点数。
 * **物理调度**：Triton Kernel 执行在一个由 Program 构成的 Grid 上（类似于 CUDA 的 Block Grid）。一个 Program (对应一个 `pid = tl.program_id(axis=0)`) 负责处理一整块/一整行数据，编译器会在编译阶段自动将这一块操作映射到 GPU 的 Warp、Threads 以及 Tensor Cores 上。
+  > [!NOTE]
+  > **技术注脚（软硬件物理映射）**：在底层的物理映射中，Triton 的一个 **Program** 在 GPU 上对应的就是一个标准的 CUDA **Thread Block（线程块）**。Triton 编译器会根据你指定的 `BLOCK_SIZE` 和计算逻辑，在编译阶段自动决定这个 Thread Block 内需要多少个 Warp（Warp Allocation）以及寄存器如何分配，从而将声明式的块级运算安全地分解成多线程的 SIMT 指令。
 * **核心心智对比**：
   * **CUDA**：我是一个**工人**（Thread），我得计算我该去搬哪块砖。
   * **Triton**：我是一个**领班**（Program），我一次性指挥一辆铲车（Block Tensor）搬走一堆砖。

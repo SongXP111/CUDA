@@ -7,7 +7,7 @@
 ## 目录 (Table of Contents)
 - [Q1: 如何在 3D Grid 和 3D Block 的配置下计算全局线程 ID (Global Thread ID)？](#q1-如何在-3d-grid-和-3d-block-的配置下计算全局线程-id-global-thread-id)
 - [Q2: CUDA 内置变量（如 `blockIdx`、`threadIdx` 等）是哪里来的？](#q2-cuda-内置变量如-blockidxthreadidx-等是哪里来的)
-- [Q3: 什么是统一内存 (Unified Memory / UMA)，它有什么优缺点？](#q3-什么是统一内存-unified-memory--uma它有什么优缺点)
+- [Q3: 什么是统一内存 (Unified Memory)，它有什么优缺点？](#q3-什么是统一内存-unified-memory它有什么优缺点)
 - [Q4: 什么是 Warp（线程束）？为什么它的物理大小是 32？](#q4-什么是-warp线程束为什么它的物理大小是-32)
 - [Q5: CUDA Kernel（核函数）和普通 CPU Function（函数）有什么区别？](#q5-cuda-kernel核函数和普通-cpu-function函数有什么区别)
 - [Q6: 为什么核函数执行后立即调用 `cudaGetLastError()` 无法捕获异步执行中的运行时错误？](#q6-为什么核函数执行后立即调用-cudagetlasterror-无法捕获异步执行中的运行时错误)
@@ -71,9 +71,9 @@ __global__ void whoami(void) {
 
 ---
 
-### Q3: 什么是统一内存 (Unified Memory / UMA)，它有什么优缺点？
+### Q3: 什么是统一内存 (Unified Memory)，它有什么优缺点？
 
-* **概念**：使用 `cudaMallocManaged()` 分配的内存。它在 CPU 和 GPU 之间建立了一个统一的虚拟地址空间，驱动程序会自动在主机（Host）和设备（Device）之间按需进行页面迁移（Page Migration）。
+* **概念**：使用 `cudaMallocManaged()` 分配的内存。它在 CPU 和 GPU 之间建立统一的虚拟地址空间，驱动程序会在主机（Host）和设备（Device）之间按需进行页面迁移（Page Migration）。注意：Unified Memory 不是 UMA（Uniform Memory Access）；后者是另一类硬件内存架构术语。
 * **优点**：
   * 大幅简化代码，无需手动调用 `cudaMemcpy()`。
   * 允许分配超出 GPU 物理显存限制的数据量（通过系统虚拟内存分页机制换入换出，但会有很大性能惩罚）。
@@ -107,7 +107,7 @@ __global__ void whoami(void) {
 ### Q6: 为什么核函数执行后立即调用 `cudaGetLastError()` 无法捕获异步执行中的运行时错误？
 
 * **原因**：CUDA 核函数的启动（`kernel<<<...>>>`）是**异步**的。CPU 触发启动后会立即继续执行下一行代码，而此时 GPU 上的核函数可能还没开始执行或没有执行完。
-* **解决方法**：在核函数调用后，必须使用 `cudaDeviceSynchronize()` 同步 CPU 与 GPU，或者使用带同步的 API（如 `cudaMemcpy`），然后再调用 `cudaGetLastError()` 检查是否有错误。
+* **解决方法**：核函数启动后先用 `cudaGetLastError()` 检查启动参数等即时错误；若要检查运行期错误，应在合适的同步点检查同步 API 本身的返回值，例如 `cudaDeviceSynchronize()`。不要把普通 `cudaMemcpy` 当作通用的错误同步手段：其同步语义取决于内存类型、stream 和调用上下文。
 * **最佳实践模板**：
   ```cpp
   kernel<<<grid, block>>>(args);
@@ -164,9 +164,9 @@ __global__ void whoami(void) {
 #### 4. 为什么要搞“Warp（32个线程）”这一层？
 在硬件底层，GPU 引入了 **Warp（线程束）** 这一概念（将 32 个线程打包执行），主要为了解决两个问题：
 * **降低硬件控制开销（SIMT 机制）**：
-  如果让显卡为几万个线程每个都设计独立的指令译码和发射电路，芯片的能耗和面积会爆炸。GPU 的设计是：让 32 个线程（一个 Warp）共享一套指令发射系统。Warp 调度器每次发射一条指令，32 个 CUDA Core 共同执行，极大地节省了芯片空间来塞入更多计算单元。
+  如果让显卡为几万个线程每个都设计独立的指令译码和发射电路，芯片的能耗和面积会爆炸。GPU 让一个 Warp 的线程共享指令流，并由 SM 调度器发射指令；具体一条指令由多少执行单元、用几个周期完成取决于微架构。
 * **隐藏访存延迟（Latency Hiding）**：
-  从 Global Memory 读取数据非常慢（需要数百个时钟周期）。当 Warp 0 因为读取数据而阻塞时，SM 的调度器会瞬间（零周期延迟）切换到 Warp 1 执行。因为有大量活跃的 Warp 可以随时切换，GPU 可以通过并发吞吐完美遮盖掉读取显存的漫长等待。
+  从 Global Memory 读取数据常需数百个时钟周期。当 Warp 0 因访存等待时，调度器可在硬件调度粒度上选择另一个就绪 Warp 发射指令；足够的并发、ILP 和良好的访存模式能够隐藏一部分延迟，但并不保证完全隐藏。
 
 ---
 
@@ -185,7 +185,7 @@ __global__ void whoami(void) {
 2. **分支分化陷阱（重要）**：
    在核函数的 `if-else` 分支中调用 `__syncthreads()` 是极其危险的！如果同一个 Block 内有的线程进入了 `if` 分支，有的进入了 `else` 分支，只有一部分线程能到达 `__syncthreads()`，那么整个 Block 就会**永久陷入死锁**。
 3. **Warp 同步的演变**：
-   在老旧显卡（Pascal 架构及更早）上，Warp 内部 32 个线程物理上锁步执行，所以不需要同步。但从 **Volta、Ampere、Ada Lovelace 直至 Blackwell** 架构，GPU 引入了**独立线程调度（Independent Thread Scheduling）**，即使在同一个 Warp 内，不同的线程也可以独立分支、走不同的执行路径。因此，如果你在同一个 Warp 的线程间交换数据（如 Shuffle 指令），**必须使用 `__syncwarp()` 强制进行 Warp 内的同步与内存栅栏**，否则会产生严重的错误值。
+   Pascal 及更早的 Warp 使用共享程序计数器，但这不应被当作跨线程内存通信的同步保证。Volta 起的独立线程调度使“隐式锁步”假设更加不安全；在线程经共享/全局内存交换数据时，应使用 `__syncwarp(mask)` 或合适的同步原语。所有 mask 指定的未退出线程必须以相同 mask 到达该调用；而 `__shfl_sync` 等 `_sync` intrinsic 已自带参与线程的收敛语义。
 
 ---
 
@@ -203,7 +203,7 @@ __global__ void whoami(void) {
 
 #### 2. 什么是原子操作？
 原子操作（Atomic Operation）保证了“读取-修改-写回”这三个动作是一个**不可分割的单一步骤**。
-* 当线程 A 对某个内存地址进行原子操作时，GPU 的显存控制器（或 L2 缓存控制器）会锁定该地址，迫使其他也想访问该地址的线程排队等待。
+* 当多个线程竞争同一地址时，硬件原子单元保证这些读-改-写操作的原子性；实现并不等同于“软件锁住地址”。高冲突仍会使操作有效串行化，降低吞吐。
 * 只有当线程 A 彻底写回数据后，排队的下一个线程才能读取到新值并进行下一次操作，确保累加绝不丢失。
 
 #### 3. 常见的 CUDA 原子操作函数
@@ -273,8 +273,8 @@ __global__ void whoami(void) {
 
 #### 3. 第三层：底层原理与高阶进阶（大厂面试、库作者深度）
 * **作用域（Scope）控制**：
-  * 默认的 `atomicAdd` 作用于整个 GPU 设备（`atomicAdd_device`）。
-  * 但 CUDA 还支持 `atomicAdd_block`（仅块内同步，如果只对 Shared Memory 操作，使用它可以告诉编译器优化）以及 `atomicAdd_system`（支持跨 CPU 和 GPU 的统一内存/PCIe 锁）。
+  * 默认原子操作的作用域、支持的数据类型和计算能力相关；不要假设所有平台都支持同一种 scoped atomic API。
+  * CUDA 提供 block/device/system 等作用域变体（可用性取决于 Toolkit、目标架构和操作类型）。选择更小的正确作用域是内存模型设计问题，不能仅因共享内存就假定会自动更快。
 * **用 `atomicCAS` (Compare-And-Swap) 实现自定义原子操作**：
   * 很多旧显卡不支持 `double` 双精度浮点数或自定义结构体的原子操作。
   * **核心考点**：如何用 `atomicCAS` 配合 `while` 循环在软件层面模拟出任何你想要的原子操作？（这是一个非常经典的 CUDA 面试/笔试题）。
@@ -375,5 +375,3 @@ __global__ void whoami(void) {
 * **Thread、Block、Grid** 决定了**单个计算任务**在 GPU 内部是如何被横向切分、并发计算的（数据并行）。
 * **Stream** 决定了**多个不同任务**在时间轴上是如何被纵向排列、重叠执行的（任务并行）。
 * 它们结合在一起，使得 GPU 既能实现单任务内部的超大规模并行，又能实现多任务之间的流水线并发。
-
-

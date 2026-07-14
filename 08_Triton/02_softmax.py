@@ -52,17 +52,45 @@ def triton_softmax(x):
 # Set up the input tensor
 torch.manual_seed(0)
 x = torch.randn(256, 1024, device='cuda')
-# x = torch.tensor([[1.0, 2.0, 3.0]], device='cuda')
+
 # Compute softmax using PyTorch
 torch_result = torch.softmax(x, dim=1)
 
 # Compute softmax using Triton
 triton_result = triton_softmax(x)
 
-# Compare results
-max_diff = torch.max(torch.abs(torch_result - triton_result))
-print(f"Maximum difference between PyTorch and Triton results: {max_diff:.2e}")
+# Compare results using torch.testing.assert_close
+try:
+    torch.testing.assert_close(torch_result, triton_result, rtol=1e-5, atol=1e-5)
+    print("Correctness check passed: PyTorch and Triton results are close!")
+except AssertionError as e:
+    print(f"Correctness check failed:\n{e}")
 
-# Check if results are close
-is_close = torch.allclose(torch_result, triton_result, rtol=1e-5, atol=1e-5)
-print(f"Results are close: {is_close}")
+# Set up benchmark
+@triton.testing.perf_report(
+    triton.testing.Benchmark(
+        x_names=['num_cols'],  # Argument names to use as an x-axis for the plot.
+        x_vals=[128 * i for i in range(1, 9)],  # Columns: 128, 256, 384, 512, 640, 768, 896, 1024
+        x_log=False,  # x axis is linear.
+        line_arg='provider',  # Argument name whose value corresponds to a different line in the plot.
+        line_vals=['triton', 'torch'],  # Possible values for `line_arg`.
+        line_names=['Triton', 'Torch'],  # Label name for the lines.
+        styles=[('blue', '-'), ('green', '-')],  # Line styles.
+        ylabel='GB/s',  # Label name for the y-axis.
+        plot_name='softmax-performance',  # Name for the plot. Used also as a file name for saving the plot.
+        args={'num_rows': 4096},  # Fixed number of rows.
+    ))
+def benchmark(num_rows, num_cols, provider):
+    x = torch.randn(num_rows, num_cols, device='cuda', dtype=torch.float32)
+    quantiles = [0.5, 0.2, 0.8]
+    if provider == 'torch':
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: torch.softmax(x, dim=1), quantiles=quantiles)
+    if provider == 'triton':
+        ms, min_ms, max_ms = triton.testing.do_bench(lambda: triton_softmax(x), quantiles=quantiles)
+    
+    # Calculate throughput (GB/s): 1 Read + 1 Write = 2 memory accesses
+    gbps = lambda ms: 2 * x.numel() * x.element_size() / ms * 1e-6
+    return gbps(ms), gbps(max_ms), gbps(min_ms)
+
+# Run benchmark
+benchmark.run(print_data=True, show_plots=False, save_path='.')

@@ -170,7 +170,7 @@ __global__ void whoami(void) {
 
 ---
 
-### Q9: `cudaDeviceSynchronize()`、`__syncthreads()` 和 `__syncwarp()` 三种同步函数有什么区别 and 联系？
+### Q9: `cudaDeviceSynchronize()`、`__syncthreads()` 和 `__syncwarp()` 三种同步函数有什么区别和联系？
 
 在 CUDA 中，由于线程执行完全是异步且无序的，我们需要在不同层级进行“对齐”。这三个同步函数构成了从**主机端到设备端不同颗粒度**的栅栏同步机制：
 

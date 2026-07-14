@@ -20,7 +20,7 @@ torch::Tensor polynomial_activation_cuda(torch::Tensor x) {
     int threads = 1024;
     int blocks = (x.numel() + threads - 1) / threads;
 
-    AT_DISPATCH_FLOATING_TYPES(x.type(), "polynomial_activation_cuda", ([&] {
+    AT_DISPATCH_FLOATING_TYPES(x.scalar_type(), "polynomial_activation_cuda", ([&] {
         polynomial_activation_kernel<scalar_t><<<blocks, threads>>>(
             x.data_ptr<scalar_t>(),
             output.data_ptr<scalar_t>(),

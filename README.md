@@ -12,6 +12,10 @@
 | **第六章** | `06_CUDA_APIs/` | cuBLAS、cuDNN、cuBLASmp 等官方加速库 |
 | **第七章** | `07_Faster_Matmul/` | 矩阵乘法（SGEMM）性能分阶优化与极致调优 |
 | **第八章** | `08_Triton/` | Triton 编程模型、Block-level 算子开发与 GPU 性能对比 |
+| **第九章** | `09_PyTorch_Extensions/` | PyTorch C++ / CUDA 扩展开发与算子融合性能优化 |
+| **第八章** | `08_Triton/` | Triton 编程模型、Block-level 算子开发与 GPU 性能对比 |
+| **第九章** | `09_PyTorch_Extensions/` | PyTorch C++ / CUDA 扩展开发与算子融合性能优化 |
+| **第八章** | `08_Triton/` | Triton 编程模型、Block-level 算子开发与 GPU 性能对比 |
 
 ---
 
@@ -31,6 +35,30 @@
 
 * 💾 **内存管理与访存优化**
   * [Q3: 什么是统一内存 (Unified Memory)，它有什么优缺点？](./05_Writing_your_First_Kernels/QA.md#q3-什么是统一内存-unified-memory它有什么优缺点)
+  * [Q7: 什么是全局内存合并访问 (Coalesced Memory Access)？](./05_Writing_your_First_Kernels/QA.md#q7-什么是全局内存合并访问-coalesced-memory-access)
+
+* ⚙️ **执行架构与调度**
+  * [Q4: 什么是 Warp（线程束）？为什么它的物理大小是 32？](./05_Writing_your_First_Kernels/QA.md#q4-什么是-warp线程束为什么它的物理大小是-32)
+  * [Q5: CUDA Kernel（核函数）和普通 CPU Function（函数）有什么区别？](./05_Writing_your_First_Kernels/QA.md#q5-cuda-kernel核函数和普通-cpu-function函数有什么区别)
+  * [Q8: 请用通俗的比喻解释 CUDA 软件层（线程）与硬件层（显卡芯片）的完整架构映射？](./05_Writing_your_First_Kernels/QA.md#q8-请用通俗的比喻解释-cuda-软件层线程与硬件层显卡芯片的完整架构映射)
+
+* ⚠️ **同步与错误处理**
+  * [Q6: 为什么核函数执行后立即调用 `cudaGetLastError()` 无法捕获异步执行中的运行时错误？](./05_Writing_your_First_Kernels/QA.md#q6-为什么核函数执行后立即调用-cudagetlasterror-无法捕获异步执行中的运行时错误)
+  * [Q9: `cudaDeviceSynchronize()`、`__syncthreads()` 和 `__syncwarp()` 三种同步函数有什么区别和联系？](./05_Writing_your_First_Kernels/QA.md#q9-cudadevicesynchronize__syncthreads-和-__syncwarp-三种同步函数有什么区别和联系)
+
+* 🔒 **原子操作 (Atomics)**
+  * [Q10: 什么是 CUDA 原子操作 (Atomic Operations)？为什么需要它？有哪些主要函数及代价？](./05_Writing_your_First_Kernels/QA.md#q10-什么是-cuda-原子操作-atomic-operations为什么需要它有哪些主要函数及代价)
+  * [Q11: 关于 CUDA 原子操作 (Atomic Operations)，在实际开发和面试中需要掌握到什么程度？](./05_Writing_your_First_Kernels/QA.md#q11-关于-cuda-原子操作-atomic-operations在实际开发和面试中需要掌握到什么程度)
+
+* 🔀 **流与异步并发 (Streams)**
+  * [Q12: 结合 Thread、Block、Grid 解释 CUDA Stream (流) 的底层工作原理与软硬件映射？](./05_Writing_your_First_Kernels/QA.md#q12-结合-threadblockgrid-解释-cuda-stream-流的底层工作原理与软硬件映射)
+
+---
+
+### 📗 第六章：CUDA API 库
+
+> 完整 Q&A 文档：[06_CUDA_APIs/QA.md](./06_CUDA_APIs/QA.md)
+
   * [Q7: 什么是全局内存合并访问 (Coalesced Memory Access)？](./05_Writing_your_First_Kernels/QA.md#q7-什么是全局内存合并访问-coalesced-memory-access)
 
 * ⚙️ **执行架构与调度**
@@ -95,18 +123,13 @@
 
 * 🐍 **Triton 编程模型与底层原理**
   * [Q1: CUDA 与 Triton 的编程模型有什么本质区别？什么是“Block-level”编程？](./08_Triton/QA.md#q1-cuda-与-triton-的编程模型有什么本质区别什么是block-level编程)
-  * [Q2: 一个 Triton Kernel 由哪些部分组成？`@triton.jit`、Grid、Program ID 和 `tl.constexpr` 分别做什么？](./08_Triton/QA.md#q2-一个-triton-kernel-由哪些部分组成tritonjitgridprogram-id-和-tlconstexpr-分别做什么)
-  * [Q3: Vector Add 中如何计算 offsets？为什么必须使用 mask？](./08_Triton/QA.md#q3-vector-add-中如何计算-offsets为什么必须使用-mask)
-  * [Q4: `tl.load()`、`tl.store()`、pointer tensor、mask 和 `other` 应该怎样理解？](./08_Triton/QA.md#q4-tlloadtlstorepointer-tensormask-和-other-应该怎样理解)
 
-* ⚡ **Softmax、融合与性能**
-  * [Q5: 为什么 Softmax 要减去最大值？Triton 版本为什么可能比多个 PyTorch Kernel 更快？](./08_Triton/QA.md#q5-为什么-softmax-要减去最大值triton-版本为什么可能比多个-pytorch-kernel-更快)
-  * [Q6: `tl.max()`、`tl.sum()` 如何完成 Reduction？“加载到 SRAM”是否等于手写 Shared Memory？](./08_Triton/QA.md#q6-tlmaxtlsum-如何完成-reduction加载到-sram是否等于手写-shared-memory)
-  * [Q7: `BLOCK_SIZE` 为什么常取 2 的幂？当前 Softmax 实现有哪些输入限制？](./08_Triton/QA.md#q7-block_size-为什么常取-2-的幂当前-softmax-实现有哪些输入限制)
+---
 
-* 🧪 **验证、Benchmark 与工程实践**
-  * [Q8: Triton Kernel 如何与 PyTorch Tensor 集成？为什么返回结果时 Kernel 可能仍未完成？](./08_Triton/QA.md#q8-triton-kernel-如何与-pytorch-tensor-集成为什么返回结果时-kernel-可能仍未完成)
-  * [Q9: 如何正确验证和 Benchmark Triton Kernel？GB/s 应该怎样计算？](./08_Triton/QA.md#q9-如何正确验证和-benchmark-triton-kernelgbs-应该怎样计算)
-  * [Q10: `BLOCK_SIZE`、`num_warps`、`num_stages` 和 Autotune 有什么关系？](./08_Triton/QA.md#q10-block_sizenum_warpsnum_stages-和-autotune-有什么关系)
-  * [Q11: Triton Kernel 应该如何调试？](./08_Triton/QA.md#q11-triton-kernel-应该如何调试)
-  * [Q12: 对 AI Infra Engineer，学完本章必须具备哪些能力？什么时候应该使用 Triton？](./08_Triton/QA.md#q12-对-ai-infra-engineer学完本章必须具备哪些能力什么时候应该使用-triton)
+### 📙 第九章：PyTorch C++ / CUDA 扩展开发
+
+> 完整 Q&A 文档：[09_PyTorch_Extensions/QA.md](./09_PyTorch_Extensions/QA.md)
+
+* 🔌 **自定义扩展开发与绑定机制**
+  * [Q1: 为什么自定义 CUDA 扩展（CUDA Extension）比 PyTorch 原生组合（如 `x^2 + x + 1`）快这么多？](./09_PyTorch_Extensions/QA.md#q1-为什么自定义-cuda-扩展cuda-extension比-pytorch-原生组合如-x2--x--1快这么多)
+  * [Q2: 什么是 `AT_DISPATCH_FLOATING_TYPES` 宏？它的作用和底层机制是什么？](./09_PyTorch_Extensions/QA.md#q2-什么是-at_dispatch_floating_types-宏它的作用和底层机制是什么)
